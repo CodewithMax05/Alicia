@@ -79,13 +79,21 @@ const Audio = (() => {
         o.stop(start + dur + 0.02);
     }
 
+    // Geteilter Noise-Buffer — einmalig generiert, von allen Noise-Funktionen wiederverwendet.
+    // Verhindert wiederholte Heap-Allokationen und GC-Spikes auf dem Main-Thread.
+    let _noiseBuf = null;
+    function _getNoiseBuf() {
+        if (_noiseBuf) return _noiseBuf;
+        _noiseBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 3.0), ctx.sampleRate);
+        const d = _noiseBuf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+        return _noiseBuf;
+    }
+
     function noiseShot(start, dur, cutoff, vol) {
         const c = getCtx();
-        const buf = c.createBuffer(1, Math.ceil(c.sampleRate * dur), c.sampleRate);
-        const d = buf.getChannelData(0);
-        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
         const src = c.createBufferSource();
-        src.buffer = buf;
+        src.buffer = _getNoiseBuf();
         const f = c.createBiquadFilter();
         f.type = 'lowpass'; f.frequency.value = cutoff;
         const g = c.createGain();
@@ -93,16 +101,14 @@ const Audio = (() => {
         g.gain.exponentialRampToValueAtTime(0.001, start + dur);
         src.connect(f); f.connect(g); g.connect(masterGain);
         src.start(start);
+        src.stop(start + dur + 0.02);   // stop() muss nach start() kommen
     }
 
     // Bandpass-Rauschen: Frequenzband zwischen freqLo und freqHi, mit optionalem Attack
     function bandNoise(start, dur, freqLo, freqHi, vol, attack) {
         const c = getCtx();
-        const buf = c.createBuffer(1, Math.ceil(c.sampleRate * dur), c.sampleRate);
-        const d = buf.getChannelData(0);
-        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
         const src = c.createBufferSource();
-        src.buffer = buf;
+        src.buffer = _getNoiseBuf();
         const hp = c.createBiquadFilter();
         hp.type = 'highpass'; hp.frequency.value = freqLo;
         const lp = c.createBiquadFilter();
@@ -114,6 +120,7 @@ const Audio = (() => {
         g.gain.exponentialRampToValueAtTime(0.001, start + dur);
         src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(masterGain);
         src.start(start);
+        src.stop(start + dur + 0.02);   // stop() muss nach start() kommen
     }
 
     // ── Sound-Effekte ─────────────────────────────────────────────────────────
@@ -243,42 +250,72 @@ const Audio = (() => {
     }
 
     // ── Hintergrundmusik ──────────────────────────────────────────────────────
-    // Einfacher synthethischer Renn-Loop mit Web Audio API
+    // Lookahead-Scheduler: Audio wird 120ms im Voraus geplant → kein Main-Thread-Lag
+    // Stil: ruhige keltisch/folk-angehauchte Begleitung, 96 BPM, C–Am–F–G
 
-    const BG_NOTES  = [392, 440, 494, 523, 587, 659, 523, 494]; // G A B C D E C B
-    const BG_DRUMS  = [1,0,0,1, 0,1,0,0, 1,0,0,1, 0,1,0,0];    // Kick/Snare pattern
-    let bgBeat = 0, bgHandle = null;
+    const _BG_LOOKAHEAD = 0.12;               // Sekunden vorausplanen
+    const _BG_STEP_DUR  = (60 / 96) / 2;     // Achtelnote bei 96 BPM ≈ 0.3125 s
+
+    // 16-Schritt-Sequenz (Achtelnoten). 0 = Pause
+    const BG_MEL1   = [784, 0, 880, 784, 659,  0, 784, 659, 587,  0, 659, 587, 523,  0, 659, 784];
+    const BG_MEL2   = [523, 0, 659, 523, 440,  0, 523, 440, 392,  0, 440, 392, 330,  0, 440, 523];
+    const BG_BASS   = [131, 0, 165,   0, 220,  0, 131,   0, 175,  0, 220,   0, 196,  0, 175,   0];
+    // Zupf-Arpeggio auf Offbeats (kurze Töne, gitarrenartig)
+    const BG_ARP    = [  0, 392, 0, 330,  0, 262,  0, 294,  0, 440,  0, 330,  0, 294,  0, 392];
+    // Akkord-Pads (I–vi–IV–V): C–Am–F–G
+    const BG_CHORDS = [
+        [262, 330, 392],  // C-Dur  (Schritt  0)
+        [220, 262, 330],  // Am     (Schritt  4)
+        [175, 220, 262],  // F-Dur  (Schritt  8)
+        [196, 247, 294],  // G-Dur  (Schritt 12)
+    ];
+
+    let _bgNextTime = 0, _bgStep = 0, bgHandle = null;
+
+    function _scheduleBgStep(t, step) {
+        const s = step % 16;
+
+        // Melodie Stimme 1 (Dreieck, Flöten-artig)
+        if (BG_MEL1[s] > 0) osc(BG_MEL1[s], 'triangle', t, 0.32, 0.040);
+        // Melodie Stimme 2 (Terz tiefer, leiser — erzeugt Tiefe)
+        if (BG_MEL2[s] > 0) osc(BG_MEL2[s], 'triangle', t, 0.32, 0.024);
+
+        // Gehender Bass (Sinus, warm)
+        if (BG_BASS[s] > 0) osc(BG_BASS[s], 'sine', t, 0.34, 0.056);
+
+        // Zupf-Arpeggio auf Offbeats (kurze Töne = Pizzicato-Charakter)
+        if (BG_ARP[s]  > 0) osc(BG_ARP[s],  'triangle', t, 0.10, 0.027);
+
+        // Akkord-Pad auf den vier Hauptschlägen (lang ausklingend)
+        const ci = [0, 4, 8, 12].indexOf(s);
+        if (ci >= 0) BG_CHORDS[ci].forEach(f => osc(f, 'triangle', t, 0.40, 0.024));
+
+        // Sanfter Kick nur auf Beat 1 + 3 (Schritte 0 und 8)
+        if (s === 0 || s === 8) {
+            noiseShot(t, 0.048, 100, 0.052);
+            osc(55, 'sine', t, 0.065, 0.075);
+        }
+
+        // Dezentes Hi-Hat nur auf Viertelschlägen (nicht jeden Achtel)
+        if (s % 4 === 0) noiseShot(t, 0.013, 7000, 0.007);
+    }
 
     function _startBgLoop() {
         if (bgHandle) return;
-        bgBeat = 0;
-        const BPM      = 148;
-        const beatMs   = (60 / BPM) * 1000;
+        _bgStep     = 0;
+        _bgNextTime = getCtx().currentTime + 0.10;
 
+        // Feuert alle 75ms — prüft ob neue Schritte geplant werden müssen.
+        // Der eigentliche Audio-Aufwand läuft im Audio-Thread, nicht hier.
         bgHandle = setInterval(() => {
-            const c = getCtx();
-            const t = c.currentTime;
-
-            // Drums
-            if (BG_DRUMS[bgBeat % 16] === 1) {
-                if (bgBeat % 16 < 8) {
-                    noiseShot(t, 0.08, 120, 0.12);            // Kick
-                    osc(80, 'sine', t, 0.1, 0.12);
-                } else {
-                    noiseShot(t, 0.06, 5000, 0.06);           // Snare
-                }
+            if (!ctx) return;
+            const limit = ctx.currentTime + _BG_LOOKAHEAD;
+            while (_bgNextTime < limit) {
+                try { _scheduleBgStep(_bgNextTime, _bgStep); } catch(e) { console.warn('[Audio] BG:', e); }
+                _bgNextTime += _BG_STEP_DUR;   // immer vorrücken, auch bei Fehler
+                _bgStep++;
             }
-            // Hi-Hat jeden halben Beat
-            noiseShot(t, 0.025, 8000, 0.025);
-
-            // Melodie (alle 2 Beats)
-            if (bgBeat % 2 === 0) {
-                const note = BG_NOTES[(bgBeat / 2) % BG_NOTES.length];
-                osc(note / 2, 'triangle', t, 0.22, 0.06);   // eine Oktave tiefer, leise
-            }
-
-            bgBeat++;
-        }, beatMs / 2); // 8th notes
+        }, 75);
     }
 
     function startBgMusic() {
