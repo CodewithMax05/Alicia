@@ -92,6 +92,9 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
     let prevExhausted     = false;
     let prevProgress      = 0;
     let prevBlitzStunned  = false;
+    let prevPickupCount   = 0;
+    let prevShieldHits    = 0;
+    let prevPickupCounts  = {};   // pro Pferd – für globalen Blitz-Sound
 
     // Zeitformatierung (lokale Referenz auf globale Funktion)
     const fmtTime = fmtTimeGlobal;
@@ -208,6 +211,12 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         for (const [id, h] of Object.entries(state.horses)) {
             const col = (id === pid) ? playerColor : null;
             Renderer.updateHorse(id, h.progress, h.speed, h.lane ?? 1, h.jumpHeight ?? 0, !!h.penalized, id === pid, col, h.name, h.rider, h.horseType, h.laps ?? 0, !!h.shieldActive, h.turboTimer > 0, !!h.finished, !!h.slipstream, h.blitzStunTimer > 0);
+
+            // Blitz eingesammelt → alle Clients hören den Donner
+            if (h.lastPickupType === 'blitz' && (h.pickupCount ?? 0) !== (prevPickupCounts[id] ?? 0)) {
+                Audio.playPowerup('blitz');
+            }
+            prevPickupCounts[id] = h.pickupCount ?? 0;
         }
 
         // ── Hindernisse ──────────────────────────────────────────────────────
@@ -237,13 +246,14 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
                 Renderer.triggerFinishConfetti();
                 Renderer.triggerVictoryCamera();
             }
-            // Power-Up aufgenommen (steigende Flanke je Typ)
-            if (h.turboTimer > 0.1 && prevTurboTimer <= 0.1) Audio.playPowerup('turbo');
-            if (h.shieldActive && !prevShieldActive)          Audio.playPowerup('shield');
-            if (h.stamina > prevStamina + 30)                 Audio.playPowerup('stamina');
+            // Power-Up aufgenommen — immer Sound (Blitz läuft global, alle anderen nur lokal)
+            if (h.pickupCount !== prevPickupCount && h.lastPickupType !== 'blitz') Audio.playPowerup(h.lastPickupType);
+            // Schild hat Treffer absorbiert → Hit-Sound trotzdem
+            if (h.shieldHits !== prevShieldHits)              Audio.playHit();
             // Blitz-Treffer
             if (h.blitzStunTimer > 0 && !prevBlitzStunned) {
                 Audio.playHit();
+                Audio.playHorseScared();
                 Renderer.triggerBlitzFlash();
                 const flashEl = document.getElementById('screenFlash');
                 if (flashEl) {
@@ -273,6 +283,8 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
             prevStamina      = h.stamina;
             prevExhausted    = h.exhausted;
             prevBlitzStunned = h.blitzStunTimer > 0;
+            prevPickupCount  = h.pickupCount;
+            prevShieldHits   = h.shieldHits;
 
             // HUD
             const pct = Math.round(h.stamina);
@@ -477,7 +489,7 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
             prevJumpHeight = 0; prevPenalized = false; prevFinished = false;
             prevLapCount = 0; prevTurboTimer = 0; prevShieldActive = false;
             prevStamina = 100; prevExhausted = false; prevProgress = 0;
-            prevBlitzStunned = false;
+            prevBlitzStunned = false; prevPickupCount = 0; prevShieldHits = 0; prevPickupCounts = {};
             const buffEl  = document.getElementById('buffs');
             const timerEl = document.getElementById('lapTimer');
             const splitEl = document.getElementById('lapSplit');

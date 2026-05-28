@@ -7,6 +7,45 @@ const Audio = (() => {
     let _wantBg     = false;
     let _wantHoof   = false;
 
+    // ── Optionale Sound-Dateien (werden aus client/sounds/ geladen) ───────────
+    // Lege eigene MP3/OGG-Dateien ab — wird genutzt wenn vorhanden, sonst Synthese
+    const _buffers = {};   // { cheer: AudioBuffer, pass: AudioBuffer }
+
+    async function _loadSounds() {
+        for (const [name, url] of [['pass', 'sounds/pass.mp3'], ['horse', 'sounds/horse.mp3']]) {
+            try {
+                const resp = await fetch(url);
+                if (!resp.ok) continue;
+                const arr  = await resp.arrayBuffer();
+                _buffers[name] = await ctx.decodeAudioData(arr);
+                console.log(`[Audio] ${url} geladen`);
+            } catch { /* nicht vorhanden → Synthese-Fallback */ }
+        }
+    }
+
+    // Pferde-Wiehern mit variabler Abspielgeschwindigkeit (Tonhöhe + Energie)
+    function _playHorse(rate = 1.0, vol = 0.85) {
+        if (!_buffers['horse']) return;
+        const src = ctx.createBufferSource();
+        src.buffer = _buffers['horse'];
+        src.playbackRate.value = rate;
+        const g = ctx.createGain();
+        g.gain.value = vol;
+        src.connect(g); g.connect(masterGain);
+        src.start(ctx.currentTime);
+    }
+
+    function _playBuffer(name, vol = 1.0) {
+        if (!_buffers[name]) return false;
+        const src = ctx.createBufferSource();
+        src.buffer = _buffers[name];
+        const g = ctx.createGain();
+        g.gain.value = vol;
+        src.connect(g); g.connect(masterGain);
+        src.start(ctx.currentTime);
+        return true;
+    }
+
     // AudioContext erst nach User-Interaktion erstellen (Browser-Anforderung)
     function getCtx() {
         if (!ctx) {
@@ -14,6 +53,7 @@ const Audio = (() => {
             masterGain = ctx.createGain();
             masterGain.gain.value = 0.6;
             masterGain.connect(ctx.destination);
+            _loadSounds();   // Sound-Dateien im Hintergrund laden
             // Nachgeholt: War Musik/Hufschlag bereits angefordert?
             if (_wantBg)   _startBgLoop();
             if (_wantHoof) _hoofLoop();
@@ -55,6 +95,27 @@ const Audio = (() => {
         src.start(start);
     }
 
+    // Bandpass-Rauschen: Frequenzband zwischen freqLo und freqHi, mit optionalem Attack
+    function bandNoise(start, dur, freqLo, freqHi, vol, attack) {
+        const c = getCtx();
+        const buf = c.createBuffer(1, Math.ceil(c.sampleRate * dur), c.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+        const src = c.createBufferSource();
+        src.buffer = buf;
+        const hp = c.createBiquadFilter();
+        hp.type = 'highpass'; hp.frequency.value = freqLo;
+        const lp = c.createBiquadFilter();
+        lp.type = 'lowpass';  lp.frequency.value = freqHi;
+        const g = c.createGain();
+        const att = attack || 0.005;
+        g.gain.setValueAtTime(0.001, start);
+        g.gain.linearRampToValueAtTime(vol, start + att);
+        g.gain.exponentialRampToValueAtTime(0.001, start + dur);
+        src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(masterGain);
+        src.start(start);
+    }
+
     // ── Sound-Effekte ─────────────────────────────────────────────────────────
 
     function playHoof() {
@@ -92,6 +153,7 @@ const Audio = (() => {
         [523, 659, 784, 1047].forEach((f, i) => {
             osc(f, 'square', t + i * 0.07, 0.18, 0.35);
         });
+        _playHorse(1.25, 0.75);   // aufgeregtes Wiehern beim Start
     }
 
     function playPowerup(type) {
@@ -107,6 +169,19 @@ const Audio = (() => {
             osc(1320, 'sine', t + 0.06, 0.22, 0.12);
             osc(1760, 'sine', t + 0.12, 0.18, 0.10);
             noiseShot(t, 0.12, 4000, 0.04);
+        } else if (type === 'blitz') {
+            // ── Elektrischer Zap ──────────────────────────────────────
+            osc(2400, 'sawtooth', t,        0.055, 0.28, 120);  // Zischen: hoch→tief
+            osc(1100, 'square',   t + 0.01, 0.030, 0.22,  55);  // Crackle-Oberton
+            // ── Einschlag-Crack ───────────────────────────────────────
+            noiseShot(t + 0.04, 0.009, 20000, 0.90);            // weißes Knack-Transient
+            noiseShot(t + 0.04, 0.030,  5000, 0.65);            // Körper des Einschlags
+            // ── Donner-Rumble (mehrschichtig) ─────────────────────────
+            bandNoise(t + 0.05, 1.4,  30,  180, 0.55, 0.018);  // tiefer Hauptdonner
+            bandNoise(t + 0.06, 1.0,  90,  480, 0.38, 0.012);  // mittlerer Donner
+            bandNoise(t + 0.10, 0.8, 200,  900, 0.22, 0.008);  // heller Nachhall
+            bandNoise(t + 0.35, 1.8,  25,  130, 0.28, 0.060);  // langes Nachgrollen
+            osc(44, 'sine', t + 0.05, 0.9, 0.22);               // Sub-Bass Wumms
         } else {
             // Stamina: angenehmes Ding-Dong
             osc(523,  'sine', t,       0.18, 0.18);
@@ -116,56 +191,15 @@ const Audio = (() => {
     }
 
     function playExhausted() {
-        const t = getCtx().currentTime;
-        // Keuchendes / erschöpftes Geräusch
-        noiseShot(t,        0.18, 900,  0.14);
-        noiseShot(t + 0.22, 0.14, 600,  0.10);
-        osc(140, 'sine', t, 0.35, 0.07, 90);
+        _playHorse(0.68, 0.95);   // erschöpftes Wiehern (langsam = tief + müde)
     }
 
-    // Jubel = gefiltertes Rauschen in drei Stimm-Formant-Bändern — kein Oszillator!
-    function _crowdSound(vol, dur) {
-        const c = getCtx();
-        const t = c.currentTime;
+    // Kein Jubel-Sound — nur eigene Datei wenn vorhanden (client/sounds/pass.mp3)
+    function playCrowdCheer() { /* kein Sound */ }
+    function playCrowdPass()  { _playBuffer('pass', 0.7); }
 
-        // Lautstärke-Hüllkurve: schnell anschwellen, halten, langsam abklingen
-        const env = c.createGain();
-        env.gain.setValueAtTime(0,   t);
-        env.gain.linearRampToValueAtTime(vol, t + 0.13);
-        env.gain.setValueAtTime(vol,  t + dur * 0.5);
-        env.gain.exponentialRampToValueAtTime(0.001, t + dur);
-        env.connect(masterGain);
-
-        // Rausch-Puffer (geteilt von allen Bändern)
-        const bufLen = Math.ceil(c.sampleRate * (dur + 0.2));
-        const buf    = c.createBuffer(1, bufLen, c.sampleRate);
-        const d      = buf.getChannelData(0);
-        for (let i = 0; i < bufLen; i++) d[i] = Math.random() * 2 - 1;
-
-        // Drei Bänder wie bei menschlichem Jubel:
-        //   300 Hz  = tiefer Crowd-Rumble / Bassstimmen
-        //   900 Hz  = „Ahhh"-Vokal-Formant (das Herz des Jubels)
-        //  2400 Hz  = hohe Aufregung / Jauchzen
-        for (const [freq, Q, gain] of [
-            [300,  1.0, 0.6],
-            [900,  2.2, 0.9],
-            [2400, 1.4, 0.4],
-        ]) {
-            const src = c.createBufferSource();
-            src.buffer = buf;
-            const bp = c.createBiquadFilter();
-            bp.type = 'bandpass';
-            bp.frequency.value = freq;
-            bp.Q.value = Q;
-            const g = c.createGain();
-            g.gain.value = gain;
-            src.connect(bp); bp.connect(g); g.connect(env);
-            src.start(t);
-        }
-    }
-
-    function playCrowdCheer() { _crowdSound(1.0,  2.0); }  // Zieleinlauf / GO
-    function playCrowdPass()  { _crowdSound(0.65, 1.4); }  // Vorbeifahren
+    // Erschrockenes Wiehern (z.B. Blitz-Treffer) — schnell = hoch = erschrocken
+    function playHorseScared() { _playHorse(1.55, 0.80); }
 
     function playFinish(position) {
         const t = getCtx().currentTime;
@@ -175,7 +209,7 @@ const Audio = (() => {
                 osc(f, 'square', t + i * 0.09, 0.2, 0.3);
             });
         } else {
-            osc(330, 'sawtooth', t,      0.3, 0.2, 200);
+            osc(330, 'sawtooth', t,       0.3, 0.2, 200);
             osc(200, 'sine',     t + 0.1, 0.3, 0.15);
         }
     }
@@ -276,6 +310,6 @@ const Audio = (() => {
     return {
         init, setHoofSpeed, startHoofLoop, stopBgMusic, startBgMusic,
         playJump, playLand, playHit, playCountdownBeep, playGo, playFinish,
-        playPowerup, playExhausted, playCrowdCheer, playCrowdPass,
+        playPowerup, playExhausted, playCrowdCheer, playCrowdPass, playHorseScared,
     };
 })();

@@ -67,6 +67,9 @@ class RaceManager {
             lapTimes:        [],
             finishTime:      null,
             slipstream:      false,
+            pickupCount:     0,      // erhöht sich bei jeder Aufnahme (auch ohne Effekt)
+            lastPickupType:  null,
+            shieldHits:      0,      // erhöht sich wenn Schild einen Treffer absorbiert
         });
         if (this.state === 'waiting') this._tryStart();
     }
@@ -138,7 +141,7 @@ class RaceManager {
                 penaltyTimer: 0, accelerating: false,
                 shieldActive: false, turboTimer: 0, blitzStunTimer: 0, _blockCooldown: 0,
                 lapStartTime: 0, lapTimes: [], finishTime: null,
-                slipstream: false,
+                slipstream: false, pickupCount: 0, lastPickupType: null, shieldHits: 0,
             });
             slot++;
         }
@@ -167,7 +170,7 @@ class RaceManager {
                 penaltyTimer: 0, accelerating: false,
                 shieldActive: false, turboTimer: 0, blitzStunTimer: 0, _blockCooldown: 0,
                 lapStartTime: 0, lapTimes: [], finishTime: null,
-                slipstream: false,
+                slipstream: false, pickupCount: 0, lastPickupType: null, shieldHits: 0,
             });
             slot++;
         }
@@ -299,7 +302,7 @@ class RaceManager {
 
             // Erschöpfungs-Erholung (langsame Stamina-Regen wenn exhausted)
             if (h.exhausted) {
-                h.stamina = Math.min(100, h.stamina + 3 * deltaTime);
+                h.stamina = Math.min(100, h.stamina + 3.9 * deltaTime);  // +30% schneller
                 if (h.stamina >= 30) h.exhausted = false;
             }
 
@@ -337,7 +340,7 @@ class RaceManager {
                 // Während Strafe: Floor auf 2 absenken damit die Strafe spürbar bleibt
                 const coastMin = h.penaltyTimer > 0 ? 8 : h.maxSpeed * 0.38;
                 h.speed   = Math.max(coastMin, h.speed - h.acceleration * 0.45 * deltaTime);
-                h.stamina = Math.min(100, h.stamina + 12 * deltaTime);
+                h.stamina = Math.min(100, h.stamina + 15.6 * deltaTime);  // +30% schneller
             }
             h.speed = Math.min(h.speed, effectiveMax);
 
@@ -386,6 +389,8 @@ class RaceManager {
 
                 pu.collected = true;
                 this._puRespawnQueue.push({ type: pu.type, timer: 5 });
+                h.pickupCount++;                  // immer, unabhängig vom Effekt
+                h.lastPickupType = pu.type;
                 if (pu.type === 'stamina') { h.stamina = 100; h.exhausted = false; }
                 if (pu.type === 'turbo')   { h.turboTimer = 3.0; h.exhausted = false; }
                 if (pu.type === 'shield')  { h.shieldActive = true; }
@@ -416,6 +421,7 @@ class RaceManager {
                     if (h.shieldActive) {
                         h.shieldActive   = false;
                         h._blockCooldown = 1.5;
+                        h.shieldHits++;           // Schild hat absorbiert → Sound-Event
                     } else {
                         h.speed         *= 0.35;
                         h.penaltyTimer   = 1.5;
@@ -444,6 +450,9 @@ class RaceManager {
                 turboTimer:      Math.max(0, h.turboTimer),
                 shieldActive:    h.shieldActive,
                 blitzStunTimer:  Math.max(0, h.blitzStunTimer),
+                pickupCount:     h.pickupCount,
+                lastPickupType:  h.lastPickupType,
+                shieldHits:      h.shieldHits,
                 lapTimes:     h.lapTimes,
                 finishTime:   h.finishTime,
                 currentLapTime: h.finished ? null : this._raceTime - h.lapStartTime,
