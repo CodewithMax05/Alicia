@@ -4,7 +4,7 @@
 
 #lobbyBrowser {
     position: absolute; inset: 0; z-index: 60;
-    display: none; align-items: center; justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     background: linear-gradient(155deg, rgba(4,7,18,0.98) 0%, rgba(10,6,26,0.99) 100%);
     backdrop-filter: blur(10px);
 }
