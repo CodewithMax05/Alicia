@@ -49,11 +49,11 @@ body { background: #0d1117; overflow: hidden; font-family: 'Segoe UI', sans-seri
 }
 
 #status {
-    font-size: 11px; color: #556; margin-bottom: 12px;
+    font-size: 11px; color: #8fa8cc; margin-bottom: 12px;
     letter-spacing: 0.3px;
 }
-#status[style*="4caf50"] { color: #5c9 !important; }  /* Verbunden → grün */
-#status[style*="f44336"] { color: #e55 !important; }  /* Getrennt → rot */
+#status[style*="4caf50"] { color: #5dd98a !important; }  /* Verbunden → grün */
+#status[style*="f44336"] { color: #ff6b6b !important; }  /* Getrennt → rot */
 
 /* Speed */
 #speed {
@@ -64,7 +64,7 @@ body { background: #0d1117; overflow: hidden; font-family: 'Segoe UI', sans-seri
 
 /* Stamina-Bereich */
 #stamLabel {
-    font-size: 10px; color: #667; text-transform: uppercase;
+    font-size: 10px; color: #9ab0c8; text-transform: uppercase;
     letter-spacing: 0.9px; margin-bottom: 5px;
 }
 .bar-wrap {
@@ -81,7 +81,7 @@ body { background: #0d1117; overflow: hidden; font-family: 'Segoe UI', sans-seri
 
 /* Kamera-Modus */
 #camMode {
-    font-size: 11px; color: #5577aa;
+    font-size: 11px; color: #7fa0cc;
     margin-bottom: 8px; letter-spacing: 0.2px;
 }
 
@@ -94,17 +94,17 @@ body { background: #0d1117; overflow: hidden; font-family: 'Segoe UI', sans-seri
 
 /* Tastatur-Hinweise */
 .hint {
-    font-size: 10px; color: #334; line-height: 1.75;
+    font-size: 10px; color: #7a90ae; line-height: 1.75;
     padding-top: 10px;
-    border-top: 1px solid rgba(255,255,255,0.05);
+    border-top: 1px solid rgba(255,255,255,0.08);
 }
 .hint kbd {
     display: inline-block;
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.18);
     border-radius: 3px;
     padding: 0 4px; font-size: 9px;
-    font-family: inherit; color: #99aacc;
+    font-family: inherit; color: #b0c4e0;
     vertical-align: middle; line-height: 1.6;
 }
 
@@ -122,15 +122,15 @@ body { background: #0d1117; overflow: hidden; font-family: 'Segoe UI', sans-seri
                 inset 0 1px 0 rgba(255,255,255,0.06);
 }
 #ranking h3 {
-    font-size: 10px; color: #446; font-weight: 700;
+    font-size: 10px; color: #7a90ae; font-weight: 700;
     text-transform: uppercase; letter-spacing: 1.2px;
     margin-bottom: 9px; padding-bottom: 7px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.10);
 }
 .rank-entry {
     display: flex; align-items: center; gap: 5px;
-    padding: 4px 0; font-size: 13px; color: #aab;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    padding: 4px 0; font-size: 13px; color: #c0cce0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 .rank-entry:last-child { border-bottom: none; }
 .rank-entry.me  { color: #ffd700; font-weight: 700; }

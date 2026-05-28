@@ -148,23 +148,66 @@ const Renderer = (() => {
             ep.material = eyeMat; ep.parent = root;
         });
 
-        // Mähne — fünf Strähnen auf der linken Seite des Halses
-        for (let i = 0; i < 5; i++)
-            part('mane'+i, { width:0.15, height:0.55-i*0.05, depth:0.22 },
-                [0.4, 4.1-i*0.3, 2.0-i*0.3], 0, darkMat);
+        // Mähne — 7 Strähnen entlang des Nackenkamms
+        // Jede Strähne folgt dem Halswinkel (rotation.x = -0.45) und
+        // fällt leicht zur Seite (rotation.z = +0.22).
+        // [x, y, z, höhe, breite]
+        const maneData = [
+            [0.42, 4.18, 2.22, 0.48, 0.13],   // Stirnpartie
+            [0.42, 3.97, 2.01, 0.56, 0.15],
+            [0.41, 3.75, 1.80, 0.60, 0.16],   // Mitte – breiteste Strähne
+            [0.40, 3.54, 1.60, 0.58, 0.16],
+            [0.39, 3.34, 1.42, 0.52, 0.15],
+            [0.38, 3.15, 1.25, 0.44, 0.13],
+            [0.36, 2.98, 1.10, 0.36, 0.12],   // Widerrist
+        ];
+        for (let i = 0; i < maneData.length; i++) {
+            const [mx, my, mz, mh, mw] = maneData[i];
+            const strand = BABYLON.MeshBuilder.CreateBox('mane' + i,
+                { width: mw, height: mh, depth: 0.19 }, scene);
+            strand.position   = new BABYLON.Vector3(mx, my, mz);
+            strand.rotation.x = -0.45;   // Halsneigung
+            strand.rotation.z =  0.22;   // fällt nach rechts
+            strand.material   = darkMat;
+            strand.parent     = root;
+        }
 
-        // Schweif — zwei verjüngende Zylinder (natürlicher als Quader)
+        // Schweif — zwei verbundene Zylinder
+        // tail1: vom Rücken leicht nach oben/hinten  (Verbindungspunkt = +Y-Ende)
+        // tail2: hängt vom Verbindungspunkt nach unten (Verbindungspunkt = +Y-Ende)
+        //
+        // Verbindungspunkt  = center_tail1 + 0.5*h1*(0, cos(-0.40), sin(-0.40))
+        //                   = (0, 3.05, -2.15) + (0, +0.368, -0.156) = (0, 3.418, -2.306)
+        // center_tail2      = junction    - 0.5*h2*(0, cos(+0.50), sin(+0.50))
+        //                   = (0, 3.418, -2.306) - (0, +0.395, +0.216) = (0, 3.023, -2.522)
+        // Durchmesser an der Verbindung: beide 0.16 → nahtlos.
+
+        // tail1: rotation.x=-0.55 → weniger steil nach oben, mehr nach hinten
+        // junction = (0,3.05,-2.15) + 0.4*(0, cos(-0.55), sin(-0.55))
+        //          = (0, 3.05+0.341, -2.15-0.209) = (0, 3.391, -2.359)
         const tail1 = BABYLON.MeshBuilder.CreateCylinder('tail1',
-            { diameterTop: 0.16, diameterBottom: 0.34, height: 1.1, tessellation: 6 }, scene);
-        tail1.position  = new BABYLON.Vector3(0, 2.6, -2.35);
+            { diameterTop: 0.16, diameterBottom: 0.34, height: 0.80, tessellation: 6 }, scene);
+        tail1.position   = new BABYLON.Vector3(0, 3.05, -2.15);
         tail1.rotation.x = -0.55;
-        tail1.material  = darkMat; tail1.parent = root;
+        tail1.material   = darkMat; tail1.parent = root;
 
+        // center_tail2 = junction - 0.45*(0, cos0.50, sin0.50)
+        //              = (0, 3.391-0.395, -2.359-0.216) = (0, 2.996, -2.575)
         const tail2 = BABYLON.MeshBuilder.CreateCylinder('tail2',
-            { diameterTop: 0.04, diameterBottom: 0.15, height: 1.0, tessellation: 5 }, scene);
-        tail2.position  = new BABYLON.Vector3(0, 1.75, -2.92);
-        tail2.rotation.x = -0.30;
-        tail2.material  = darkMat; tail2.parent = root;
+            { diameterTop: 0.16, diameterBottom: 0.09, height: 0.90, tessellation: 5 }, scene);
+        tail2.position   = new BABYLON.Vector3(0, 3.00, -2.58);
+        tail2.rotation.x =  0.50;
+        tail2.material   = darkMat; tail2.parent = root;
+
+        // bottom_tail2 = (0,2.996,-2.575) + 0.45*(0,-cos0.50,-sin0.50)
+        //              = (0, 2.601, -2.791)
+        // center_tail3 = bottom_tail2 - 0.35*(0, cos0.15, sin0.15)
+        //              = (0, 2.601-0.346, -2.791-0.053) = (0, 2.255, -2.844)
+        const tail3 = BABYLON.MeshBuilder.CreateCylinder('tail3',
+            { diameterTop: 0.09, diameterBottom: 0.03, height: 0.70, tessellation: 5 }, scene);
+        tail3.position   = new BABYLON.Vector3(0, 2.26, -2.84);
+        tail3.rotation.x =  0.15;
+        tail3.material   = darkMat; tail3.parent = root;
 
         // Beine — Oberschenkel Quader, Unterschenkel Zylinder (runder Querschnitt)
         const legDefs = [
@@ -683,7 +726,8 @@ const Renderer = (() => {
         scene.fogColor   = new BABYLON.Color3(0.7, 0.85, 1.0);
 
         camera = new BABYLON.ArcRotateCamera('cam', -Math.PI/2, 0.7, 130, BABYLON.Vector3.Zero(), scene);
-        camera.lowerRadiusLimit = 40; camera.upperRadiusLimit = 250;
+        camera.lowerRadiusLimit = 40;  camera.upperRadiusLimit = 250;
+        camera.lowerBetaLimit   = 0.1; camera.upperBetaLimit   = 1.42; // nie unter den Horizont
         camera.attachControl(canvas, true);
 
         followCam = new BABYLON.FreeCamera('followCam', new BABYLON.Vector3(0, 8, -20), scene);
@@ -713,10 +757,65 @@ const Renderer = (() => {
         _skyDome.material  = _skyMat;
         _skyDome.isPickable = false;
 
-        // Boden
-        const ground = BABYLON.MeshBuilder.CreateGround('ground',{width:340,height:220},scene);
-        ground.material       = mat(scene, new BABYLON.Color3(0.22, 0.55, 0.22));
+        // Boden — DynamicTexture mit Grasvariationen
+        const ground = BABYLON.MeshBuilder.CreateGround('ground', { width: 340, height: 220 }, scene);
+        {
+            const gtex = new BABYLON.DynamicTexture('groundTex', { width: 512, height: 512 }, scene, false);
+            const gc   = gtex.getContext();
+            // Basisfarbe: satte Wiese
+            gc.fillStyle = '#3d7a2e';
+            gc.fillRect(0, 0, 512, 512);
+            // Helle Grashalme / dunkle Schatten-Flecken für Tiefe
+            for (let i = 0; i < 700; i++) {
+                const gx = Math.random() * 512, gy = Math.random() * 512;
+                const gr = 3 + Math.random() * 13;
+                gc.fillStyle = Math.random() > 0.5
+                    ? `rgba(80,168,38,${(0.07 + Math.random() * 0.11).toFixed(2)})`
+                    : `rgba(18,48,8,${(0.06 + Math.random() * 0.09).toFixed(2)})`;
+                gc.beginPath();
+                gc.ellipse(gx, gy, gr, gr * 0.45, Math.random() * Math.PI, 0, Math.PI * 2);
+                gc.fill();
+            }
+            gtex.update();
+            const gmat = new BABYLON.StandardMaterial('groundMat', scene);
+            gmat.diffuseTexture       = gtex;
+            gmat.diffuseTexture.uScale = 20;
+            gmat.diffuseTexture.vScale = 13;
+            gmat.specularColor = new BABYLON.Color3(0.03, 0.05, 0.03);
+            ground.material = gmat;
+        }
         ground.receiveShadows = true;
+
+        // Innenfläche (Infield) — leicht dunkleres Grün, setzt sich von der Bahn ab
+        const infield = BABYLON.MeshBuilder.CreateGround('infield', { width: 340, height: 220 }, scene);
+        {
+            const iftex = new BABYLON.DynamicTexture('infieldTex', { width: 256, height: 256 }, scene, false);
+            const ic    = iftex.getContext();
+            ic.fillStyle = '#2d6020';
+            ic.fillRect(0, 0, 256, 256);
+            for (let i = 0; i < 350; i++) {
+                const ix = Math.random() * 256, iy = Math.random() * 256;
+                const ir = 2 + Math.random() * 9;
+                ic.fillStyle = Math.random() > 0.5
+                    ? `rgba(60,130,28,${(0.07 + Math.random() * 0.10).toFixed(2)})`
+                    : `rgba(14,38,6,${(0.06 + Math.random() * 0.08).toFixed(2)})`;
+                ic.beginPath();
+                ic.ellipse(ix, iy, ir, ir * 0.45, Math.random() * Math.PI, 0, Math.PI * 2);
+                ic.fill();
+            }
+            iftex.update();
+            const ifmat = new BABYLON.StandardMaterial('infieldMat', scene);
+            ifmat.diffuseTexture       = iftex;
+            ifmat.diffuseTexture.uScale = 14;
+            ifmat.diffuseTexture.vScale = 9;
+            ifmat.specularColor = new BABYLON.Color3(0.02, 0.04, 0.02);
+            infield.material = ifmat;
+        }
+        infield.position.y    = 0.03;   // minimal über Boden, damit kein Z-Fighting
+        infield.receiveShadows = true;
+        // Infield auf die elliptische Innenbahn beschränken via ClipPlanes — einfacher: Skalierung
+        infield.scaling.x = (TRACK_A - TW / 2 - 1) / 170;
+        infield.scaling.z = (TRACK_B - TW / 2 - 1) / 110;
 
         // Strecken-Ribbon
         const inner = [], outer = [];
@@ -912,8 +1011,9 @@ const Renderer = (() => {
                         const targetCamPos = posY
                             .subtract(fwd.scale(14))
                             .add(new BABYLON.Vector3(0, 6, 0));
+                        if (targetCamPos.y < 2.5) targetCamPos.y = 2.5;   // Zielposition nie unter Boden
                         followCam.position = BABYLON.Vector3.Lerp(followCam.position, targetCamPos, 0.07);
-                        if (followCam.position.y < 1.8) followCam.position.y = 1.8;  // nie unter Boden
+                        if (followCam.position.y < 2.0) followCam.position.y = 2.0; // tatsächliche Position auch sichern
                         const lookAt = posY.add(fwd.scale(8)).add(new BABYLON.Vector3(0, 1, 0));
                         followCam.setTarget(BABYLON.Vector3.Lerp(followCam.target, lookAt, 0.1));
 
