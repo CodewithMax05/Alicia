@@ -34,6 +34,18 @@
                 <div id="lbCreateRow">
                     <input id="newLobbyName" type="text" maxlength="28" placeholder="Lobby-Name (optional)"
                         onkeydown="event.stopPropagation(); if(event.key==='Enter') createLobby();">
+                    <select id="newLobbyLaps" title="Rundenanzahl">
+                        <option value="1">1 Runde</option>
+                        <option value="2" selected>2 Runden</option>
+                        <option value="3">3 Runden</option>
+                        <option value="4">4 Runden</option>
+                        <option value="5">5 Runden</option>
+                        <option value="6">6 Runden</option>
+                        <option value="7">7 Runden</option>
+                        <option value="8">8 Runden</option>
+                        <option value="9">9 Runden</option>
+                        <option value="10">10 Runden</option>
+                    </select>
                     <label class="lb-pub-label">
                         <input type="checkbox" id="newLobbyPublic" checked>
                         öffentlich
@@ -98,7 +110,7 @@
 
     <!-- ── Runden-Anzeige + Live-Timer ────────────────────────────────────── -->
     <div id="lapDisplay">
-        Runde <span id="lapNum">1</span> / 2
+        Runde <span id="lapNum">1</span> / <span id="lapTotal">2</span>
         <div id="lapTimer" style="font-size:14px; color:#ffd700; margin-top:3px;">0:00.0</div>
     </div>
 
@@ -124,6 +136,7 @@
                 <div id="resultsTitle">🏁 Rennen beendet!</div>
                 <div id="resultsReadyArea">
                     <button id="resultsReadyBtn" onclick="resultsReady()">▶ Nächste Runde</button>
+                    <button id="resultsBackBtn" onclick="goBackToSelection()">🔄 Pferd ändern</button>
                     <span id="resultsReadyCount"></span>
                 </div>
             </div>

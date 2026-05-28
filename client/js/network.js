@@ -53,9 +53,9 @@ const Network = (() => {
     }
 
     /** Neue öffentliche oder private Lobby erstellen und direkt beitreten. */
-    function sendCreateLobby(lobbyName, isPublic, horseType, playerName, riderConfig) {
+    function sendCreateLobby(lobbyName, isPublic, horseType, playerName, riderConfig, totalLaps) {
         _horseType = horseType;
-        _send({ type: 'createLobby', lobbyName, isPublic, horseType, playerName, rider: riderConfig });
+        _send({ type: 'createLobby', lobbyName, isPublic, horseType, playerName, rider: riderConfig, totalLaps: totalLaps || 2 });
     }
 
     /** Einer bestehenden Lobby beitreten. */

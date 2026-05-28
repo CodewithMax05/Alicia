@@ -9,10 +9,11 @@ class LobbyManager {
     }
 
     /** Neue Lobby anlegen. Gibt das Lobby-Objekt zurück. */
-    create(name, isPublic = true) {
+    create(name, isPublic = true, totalLaps = 2) {
         const id   = 'L' + String(this._seq++).padStart(4, '0');
         const race = new RaceManager(() =>
-            console.log(`[${id}] Rennen beendet`)
+            console.log(`[${id}] Rennen beendet`),
+            Math.max(1, Math.min(10, totalLaps))
         );
         const lobby = {
             id,

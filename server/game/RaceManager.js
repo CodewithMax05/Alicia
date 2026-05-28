@@ -1,18 +1,18 @@
 const TRACK_LENGTH  = 1000;
-const TOTAL_LAPS    = 2;
 const GRAVITY       = 30;
 
 const WEATHER_OPTIONS = ['sunny', 'sunset', 'night', 'dawn', 'rainy', 'foggy'];
 
 const HORSE_TYPES = {
-    blitz: { maxSpeed: 35, acceleration: 20, staminaDrain: 13, jumpVelocity: 22 },
-    sturm: { maxSpeed: 30, acceleration: 25, staminaDrain:  9, jumpVelocity: 22 },
-    nebel: { maxSpeed: 26, acceleration: 13, staminaDrain:  6, jumpVelocity: 28 },
-    feuer: { maxSpeed: 40, acceleration: 18, staminaDrain: 18, jumpVelocity: 19 },
+    //         maxSpeed  accel  drain  jump
+    blitz: { maxSpeed: 34, acceleration: 22, staminaDrain: 13, jumpVelocity: 20 },  // Allrounder
+    sturm: { maxSpeed: 33, acceleration: 30, staminaDrain: 17, jumpVelocity: 20 },  // Burst-Beschleunigung
+    nebel: { maxSpeed: 32, acceleration: 19, staminaDrain:  5, jumpVelocity: 23 },  // Ausdauer, läuft nie leer
+    feuer: { maxSpeed: 38, acceleration: 17, staminaDrain: 22, jumpVelocity: 18 },  // Topspeed, brennt schnell
 };
 
 class RaceManager {
-    constructor(onRaceEnd) {
+    constructor(onRaceEnd, totalLaps = 2) {
         this.horses          = new Map();
         this.state           = 'waiting';
         this.countdown       = 0;
@@ -21,6 +21,7 @@ class RaceManager {
         this.powerups        = [];
         this._raceTime       = 0;
         this.onRaceEnd       = onRaceEnd;
+        this.totalLaps       = Math.max(1, Math.min(10, totalLaps));
         this._timer          = null;
         this._lobbyTimer     = null;
         this.weatherPreset   = 'sunny';
@@ -57,14 +58,15 @@ class RaceManager {
             isJumping:      false,
             prevJump:       false,
             penaltyTimer:   0,
-            shieldActive:   false,
-            turboTimer:     0,
-            _blockCooldown: 0,
-            exhausted:      false,
-            lapStartTime:   0,
-            lapTimes:       [],
-            finishTime:     null,
-            slipstream:     false,
+            shieldActive:    false,
+            turboTimer:      0,
+            blitzStunTimer:  0,
+            _blockCooldown:  0,
+            exhausted:       false,
+            lapStartTime:    0,
+            lapTimes:        [],
+            finishTime:      null,
+            slipstream:      false,
         });
         if (this.state === 'waiting') this._tryStart();
     }
@@ -134,7 +136,7 @@ class RaceManager {
                 stamina: 100, lane: 1, laneCooldown: 0,
                 jumpHeight: 0, isJumping: false,
                 penaltyTimer: 0, accelerating: false,
-                shieldActive: false, turboTimer: 0, _blockCooldown: 0,
+                shieldActive: false, turboTimer: 0, blitzStunTimer: 0, _blockCooldown: 0,
                 lapStartTime: 0, lapTimes: [], finishTime: null,
                 slipstream: false,
             });
@@ -163,7 +165,7 @@ class RaceManager {
                 stamina: 100, lane: 1, laneCooldown: 0,
                 jumpHeight: 0, isJumping: false,
                 penaltyTimer: 0, accelerating: false,
-                shieldActive: false, turboTimer: 0, _blockCooldown: 0,
+                shieldActive: false, turboTimer: 0, blitzStunTimer: 0, _blockCooldown: 0,
                 lapStartTime: 0, lapTimes: [], finishTime: null,
                 slipstream: false,
             });
@@ -178,32 +180,51 @@ class RaceManager {
         this._timer = setTimeout(tick, 1000);
     }
 
-    _generateObstacles() {
-        const obs = [];
+    // ── Hilfsfunktion: Position mit Mindestabstand zu bestehenden Positionen ─────
+    // constraints: [{ pos, minDist }, ...]  |  margin: Rand-Abstand von Streckenstart/-ende
+    _findPos(constraints, margin = 60) {
+        const rand  = () => Math.round(margin + Math.random() * (TRACK_LENGTH - margin * 2));
+        const isOK  = p  => constraints.every(c => Math.abs(p - c.pos) >= c.minDist);
+        let bestPos = rand(), bestScore = -Infinity;
+        for (let i = 0; i < 80; i++) {
+            const candidate = rand();
+            if (isOK(candidate)) return candidate;   // sofort gut → fertig
+            const score = constraints.reduce((s, c) => Math.min(s, Math.abs(candidate - c.pos) / c.minDist), 1);
+            if (score > bestScore) { bestScore = score; bestPos = candidate; }
+        }
+        return bestPos;   // Fallback: nächstbeste gefundene Position
+    }
 
-        // ── Statische Hindernisse (Kegel + Hürden) ────────────────────────────
+    _generateObstacles() {
+        const obs     = [];
+        const blocked = [];   // wächst mit jeder platzierten Position
+
+        // ── Statische Hindernisse (Kegel + Hürden) — min. 50 Einheiten Abstand ──
         const fixedCount = 12;
         for (let i = 0; i < fixedCount; i++) {
-            const base   = 80 + i * ((TRACK_LENGTH - 160) / fixedCount) + (Math.random() - 0.5) * 22;
             const hurdle = Math.random() < 0.22;
+            const pos    = this._findPos(blocked, 80);
+            blocked.push({ pos, minDist: 50 });
             obs.push({
                 id:       i,
-                progress: Math.round(base),
+                progress: pos,
                 lane:     hurdle ? -1 : Math.floor(Math.random() * 3),
                 type:     hurdle ? 'hurdle' : 'cone',
             });
         }
 
-        // ── Gleitende Schiebebanden (bewegen sich seitlich zwischen Spuren) ──
+        // ── Schiebebanden — min. 65 Einheiten Abstand (überspan alle Spuren) ────
         for (let i = 0; i < 4; i++) {
+            const pos = this._findPos(blocked, 100);
+            blocked.push({ pos, minDist: 65 });
             obs.push({
-                id:         fixedCount + i,
-                progress:   Math.round(130 + i * 210 + (Math.random() - 0.5) * 35),
-                lane:       1,
-                laneFloat:  1.0,
-                lanePhase:  i * 1.55 + Math.random() * 0.9,
-                laneSpeed:  0.65 + Math.random() * 0.55,
-                type:       'slider',
+                id:        fixedCount + i,
+                progress:  pos,
+                lane:      1,
+                laneFloat: 1.0,
+                lanePhase: i * 1.55 + Math.random() * 0.9,
+                laneSpeed: 0.65 + Math.random() * 0.55,
+                type:      'slider',
             });
         }
 
@@ -211,23 +232,29 @@ class RaceManager {
     }
 
     _generatePowerups() {
-        // Nur 3 Power-Ups zu Rennbeginn (einer pro Typ), Rest spawnt dynamisch nach
-        const types = ['stamina', 'turbo', 'shield'];
-        return types.map((type, i) => ({
-            id:        `pu_start_${i}`,
-            progress:  Math.round(120 + i * 280 + (Math.random() - 0.5) * 60),
-            lane:      Math.floor(Math.random() * 3),
-            type,
-            collected: false,
-        }));
+        // 8 Power-Ups: min. 45 Einh. Abstand zu Hindernissen, min. 80 Einh. zueinander
+        const types    = ['stamina','turbo','shield','blitz','stamina','turbo','shield','blitz'];
+        const obsConst = this.obstacles.map(o => ({ pos: o.progress, minDist: 45 }));
+        const puConst  = [];   // wächst pro platziertem Power-Up
+
+        return types.map((type, i) => {
+            const pos = this._findPos([...obsConst, ...puConst], 60);
+            puConst.push({ pos, minDist: 80 });
+            return { id: `pu_start_${i}`, progress: pos, lane: Math.floor(Math.random() * 3), type, collected: false };
+        });
     }
 
     _spawnPowerup(type) {
-        // Eingesammelte bereinigen, dann neues Power-Up an zufälliger Stelle hinzufügen
         this.powerups = this.powerups.filter(p => !p.collected);
+        // Abstand zu Hindernissen min. 45, zu aktiven Power-Ups min. 80
+        const constraints = [
+            ...this.obstacles.map(o => ({ pos: o.progress, minDist: 45 })),
+            ...this.powerups.map(p => ({ pos: p.progress, minDist: 80 })),
+        ];
+        const pos = this._findPos(constraints, 60);
         this.powerups.push({
             id:       `pu_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-            progress: Math.round(80 + Math.random() * (TRACK_LENGTH - 160)),
+            progress: pos,
             lane:     Math.floor(Math.random() * 3),
             type,
             collected: false,
@@ -267,10 +294,11 @@ class RaceManager {
         for (const [id, h] of this.horses) {
             if (h.finished) continue;
 
-            if (h.laneCooldown   > 0) h.laneCooldown   -= deltaTime;
-            if (h.penaltyTimer   > 0) h.penaltyTimer   -= deltaTime;
-            if (h.turboTimer     > 0) h.turboTimer     -= deltaTime;
-            if (h._blockCooldown > 0) h._blockCooldown -= deltaTime;
+            if (h.laneCooldown    > 0) h.laneCooldown    -= deltaTime;
+            if (h.penaltyTimer    > 0) h.penaltyTimer    -= deltaTime;
+            if (h.turboTimer      > 0) h.turboTimer      -= deltaTime;
+            if (h.blitzStunTimer  > 0) h.blitzStunTimer  -= deltaTime;
+            if (h._blockCooldown  > 0) h._blockCooldown  -= deltaTime;
 
             // Erschöpfungs-Erholung (langsame Stamina-Regen wenn exhausted)
             if (h.exhausted) {
@@ -285,20 +313,24 @@ class RaceManager {
             const staminaFactor = h.stamina >= 60 ? 1.0 : 0.5 + (h.stamina / 60) * 0.5;
             const baseMax       = h.exhausted ? h.maxSpeed * 0.38 : h.maxSpeed * staminaFactor;
             let   effectiveMax  = (!h.exhausted && h.turboTimer > 0) ? h.maxSpeed * 1.4 : baseMax;
+            // Blitz-Betäubung: Maximalgeschwindigkeit hart begrenzt
+            if (h.blitzStunTimer > 0) effectiveMax = Math.min(effectiveMax, h.maxSpeed * 0.42);
 
-            // Windschatten: direkt hinter einem anderen Pferd (nur Range entscheidet)
+            // Windschatten: eng hinter einem anderen Pferd in gleicher Spur (enger Bereich)
             h.slipstream = false;
             for (const [oid, other] of this.horses) {
                 if (oid === id || other.finished) continue;
                 if (other.lane !== h.lane) continue;
                 const gap = other.rawProgress - h.rawProgress;
-                if (gap > 2 && gap < 70) { h.slipstream = true; break; }
+                if (gap > 2 && gap < 28) { h.slipstream = true; break; }
             }
 
             // Geschwindigkeit & Stamina
             if (h.accelerating && !h.exhausted && h.stamina > 0) {
                 h.speed   = Math.min(h.speed + h.acceleration * deltaTime, effectiveMax);
-                h.stamina = Math.max(0, h.stamina - h.staminaDrain * deltaTime);
+                // Windschatten: 30% weniger Stamina-Verbrauch
+                const drainFactor = h.slipstream ? 0.70 : 1.0;
+                h.stamina = Math.max(0, h.stamina - h.staminaDrain * drainFactor * deltaTime);
                 if (h.stamina <= 0) h.exhausted = true;
             } else if (h.exhausted) {
                 // Erschöpft: abbremsen auf das fixe erschöpfte Cap (kein Turbo-Snap-Bug)
@@ -311,9 +343,9 @@ class RaceManager {
             }
             h.speed = Math.min(h.speed, effectiveMax);
 
-            // Windschatten: direkter Geschwindigkeits-Push (immer wenn in Range)
+            // Windschatten: spürbarer Geschwindigkeits-Push + leicht erhöhtes Speed-Cap
             if (h.slipstream) {
-                h.speed = Math.min(h.speed + h.acceleration * 0.4 * deltaTime, h.maxSpeed * 1.12);
+                h.speed = Math.min(h.speed + h.acceleration * 0.55 * deltaTime, h.maxSpeed * 1.18);
             }
 
             // Sprungphysik
@@ -336,10 +368,10 @@ class RaceManager {
                 h.lapTimes.push(Math.round(lapTime * 1000) / 1000);
                 h.lapStartTime = this._raceTime;
 
-                if (h.laps >= TOTAL_LAPS) {
+                if (h.laps >= this.totalLaps) {
                     h.finished    = true;
                     h.finishTime  = this._raceTime;
-                    h.rawProgress = TOTAL_LAPS * TRACK_LENGTH;
+                    h.rawProgress = this.totalLaps * TRACK_LENGTH;
                     h.progress    = h.rawProgress % TRACK_LENGTH;  // = 0, Fix für unbounded-Progress
                     this.finishOrder.push(id);
                     if (this.finishOrder.length === this.horses.size) this._endRace();
@@ -355,10 +387,20 @@ class RaceManager {
                 if (Math.abs(h.progress - pu.progress) > 8) continue;
 
                 pu.collected = true;
-                this._puRespawnQueue.push({ type: pu.type, timer: 8 + Math.random() * 8 });
+                this._puRespawnQueue.push({ type: pu.type, timer: 5 });
                 if (pu.type === 'stamina') { h.stamina = 100; h.exhausted = false; }
                 if (pu.type === 'turbo')   { h.turboTimer = 3.0; h.exhausted = false; }
                 if (pu.type === 'shield')  { h.shieldActive = true; }
+                if (pu.type === 'blitz') {
+                    // Alle anderen Pferde betäuben (Schild schützt davor)
+                    for (const [oid, other] of this.horses) {
+                        if (oid === id || other.finished) continue;
+                        if (other.shieldActive) { other.shieldActive = false; continue; }
+                        other.speed          *= 0.30;
+                        other.blitzStunTimer  = 2.5;
+                        other._blockCooldown  = 2.5;
+                    }
+                }
             }
 
             // Kollision mit Hindernissen (Kegel, Hürden, Slider)
@@ -395,9 +437,10 @@ class RaceManager {
                 lane: h.lane, jumpHeight: h.jumpHeight,
                 penalized:    h.penaltyTimer > 0,
                 exhausted:    h.exhausted,
-                turboActive:  h.turboTimer > 0,
-                turboTimer:   Math.max(0, h.turboTimer),
-                shieldActive: h.shieldActive,
+                turboActive:     h.turboTimer > 0,
+                turboTimer:      Math.max(0, h.turboTimer),
+                shieldActive:    h.shieldActive,
+                blitzStunTimer:  Math.max(0, h.blitzStunTimer),
                 lapTimes:     h.lapTimes,
                 finishTime:   h.finishTime,
                 currentLapTime: h.finished ? null : this._raceTime - h.lapStartTime,
@@ -409,7 +452,7 @@ class RaceManager {
         return {
             horses: horsesOut, raceState: this.state, countdown: this.countdown,
             finishOrder: this.finishOrder, ranking: ranked,
-            totalLaps: TOTAL_LAPS, obstacles: this.obstacles,
+            totalLaps: this.totalLaps, obstacles: this.obstacles,
             powerups: this.powerups.filter(p => !p.collected),
             weatherPreset: this.weatherPreset,
             readyPlayers:  [...this.readyPlayers],

@@ -86,11 +86,12 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
     let prevFinished     = false;
     let prevLapCount     = 0;
     let splitTimeout     = null;
-    let prevTurboTimer   = 0;
-    let prevShieldActive = false;
-    let prevStamina      = 100;
-    let prevExhausted    = false;
-    let prevProgress     = 0;
+    let prevTurboTimer    = 0;
+    let prevShieldActive  = false;
+    let prevStamina       = 100;
+    let prevExhausted     = false;
+    let prevProgress      = 0;
+    let prevBlitzStunned  = false;
 
     // Zeitformatierung (lokale Referenz auf globale Funktion)
     const fmtTime = fmtTimeGlobal;
@@ -117,6 +118,7 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
 
     window.toggleLobbyReady = function() { _setReadyUI(!_isReady); };
     window.resultsReady     = function() { _setReadyUI(true); };
+    window.goBackToSelection = function() { window.location.href = 'index.html'; };
 
     window.sendChatMsg = function() {
         const input = document.getElementById('chatInput');
@@ -150,12 +152,14 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
     };
 
     window.createLobby = function() {
-        const nameEl   = document.getElementById('newLobbyName');
-        const pubEl    = document.getElementById('newLobbyPublic');
+        const nameEl    = document.getElementById('newLobbyName');
+        const pubEl     = document.getElementById('newLobbyPublic');
+        const lapsEl    = document.getElementById('newLobbyLaps');
         const lobbyName = (nameEl?.value.trim() || playerName + 's Lobby').slice(0, 28);
         const isPublic  = pubEl ? pubEl.checked : true;
+        const totalLaps = Math.max(1, Math.min(10, parseInt(lapsEl?.value || '2', 10)));
         hide('lobbyBrowserError');
-        Network.sendCreateLobby(lobbyName, isPublic, horseType, playerName, riderConfig);
+        Network.sendCreateLobby(lobbyName, isPublic, horseType, playerName, riderConfig, totalLaps);
     };
 
     window.joinLobbyById = function(lobbyId) {
@@ -203,7 +207,7 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         // ── Pferde ───────────────────────────────────────────────────────────
         for (const [id, h] of Object.entries(state.horses)) {
             const col = (id === pid) ? playerColor : null;
-            Renderer.updateHorse(id, h.progress, h.speed, h.lane ?? 1, h.jumpHeight ?? 0, !!h.penalized, id === pid, col, h.name, h.rider, h.horseType, h.laps ?? 0, !!h.shieldActive, h.turboTimer > 0, !!h.finished);
+            Renderer.updateHorse(id, h.progress, h.speed, h.lane ?? 1, h.jumpHeight ?? 0, !!h.penalized, id === pid, col, h.name, h.rider, h.horseType, h.laps ?? 0, !!h.shieldActive, h.turboTimer > 0, !!h.finished, !!h.slipstream, h.blitzStunTimer > 0);
         }
 
         // ── Hindernisse ──────────────────────────────────────────────────────
@@ -237,6 +241,8 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
             if (h.turboTimer > 0.1 && prevTurboTimer <= 0.1) Audio.playPowerup('turbo');
             if (h.shieldActive && !prevShieldActive)          Audio.playPowerup('shield');
             if (h.stamina > prevStamina + 30)                 Audio.playPowerup('stamina');
+            // Blitz-Treffer
+            if (h.blitzStunTimer > 0 && !prevBlitzStunned)   Audio.playHit();
             // Erschöpfung einsetzt
             if (h.exhausted && !prevExhausted)                Audio.playExhausted();
 
@@ -258,6 +264,7 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
             prevShieldActive = h.shieldActive;
             prevStamina      = h.stamina;
             prevExhausted    = h.exhausted;
+            prevBlitzStunned = h.blitzStunTimer > 0;
 
             // HUD
             const pct = Math.round(h.stamina);
@@ -267,8 +274,11 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
                 h.exhausted ? '#880000' : pct > 50 ? '#4caf50' : pct > 25 ? '#ff9800' : '#f44336';
             const stamLabelEl = document.getElementById('stamLabel');
             if (stamLabelEl) stamLabelEl.textContent = h.exhausted ? 'Stamina: 😮‍💨 Erschöpft!' : 'Stamina:';
-            if (rs === 'racing' || rs === 'countdown')
+            if (rs === 'racing' || rs === 'countdown') {
                 document.getElementById('lapNum').textContent = Math.min(h.laps + 1, state.totalLaps);
+                const ltEl = document.getElementById('lapTotal');
+                if (ltEl) ltEl.textContent = state.totalLaps;
+            }
 
             // Live-Lap-Timer
             if (rs === 'racing') {
@@ -297,9 +307,10 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
             const buffEl = document.getElementById('buffs');
             if (buffEl) {
                 const parts = [];
-                if (h.turboActive)    parts.push(`<span style="color:#ffd700">⚡ Turbo ${h.turboTimer.toFixed(1)}s</span>`);
-                if (h.shieldActive)   parts.push(`<span style="color:#55aaff">🛡️ Schild</span>`);
-                if (h.slipstream)     parts.push(`<span style="color:#aaffcc">💨 Windschatten</span>`);
+                if (h.turboActive)         parts.push(`<span style="color:#ffd700">⚡ Turbo ${h.turboTimer.toFixed(1)}s</span>`);
+                if (h.shieldActive)        parts.push(`<span style="color:#55aaff">🛡️ Schild</span>`);
+                if (h.slipstream)          parts.push(`<span style="color:#44ffcc">💨 Windschatten +18%</span>`);
+                if (h.blitzStunTimer > 0)  parts.push(`<span style="color:#ffee00">💫 Betäubt! ${h.blitzStunTimer.toFixed(1)}s</span>`);
                 buffEl.innerHTML = parts.join('');
             }
         }
@@ -458,6 +469,7 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
             prevJumpHeight = 0; prevPenalized = false; prevFinished = false;
             prevLapCount = 0; prevTurboTimer = 0; prevShieldActive = false;
             prevStamina = 100; prevExhausted = false; prevProgress = 0;
+            prevBlitzStunned = false;
             const buffEl  = document.getElementById('buffs');
             const timerEl = document.getElementById('lapTimer');
             const splitEl = document.getElementById('lapSplit');

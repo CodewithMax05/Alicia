@@ -82,7 +82,7 @@ wss.on('connection', (ws) => {
 
         // ── Lobby erstellen ──────────────────────────────────────────────────
         if (msg.type === 'createLobby' && !ws.lobbyId) {
-            const lb = lobbyMgr.create(msg.lobbyName, msg.isPublic !== false);
+            const lb = lobbyMgr.create(msg.lobbyName, msg.isPublic !== false, msg.totalLaps || 2);
             const id = Math.random().toString(36).substr(2, 8);
             ws.horseId = id;
             ws.lobbyId = lb.id;

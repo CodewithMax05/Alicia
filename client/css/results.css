@@ -30,6 +30,14 @@
     transition: background .2s, transform .1s, border-color .2s;
 }
 #resultsReadyBtn:hover { background: rgba(255,215,0,0.24); transform: scale(1.04); }
+#resultsBackBtn {
+    padding: 10px 24px; font-size: 13px; font-weight: bold;
+    background: rgba(100,160,255,0.10); color: #88bbff;
+    border: 2px solid rgba(100,160,255,0.30); border-radius: 30px;
+    cursor: pointer; letter-spacing: 0.4px;
+    transition: background .2s, transform .1s, border-color .2s;
+}
+#resultsBackBtn:hover { background: rgba(100,160,255,0.22); transform: scale(1.04); }
 #resultsReadyCount { font-size: 13px; color: #666; min-width: 70px; }
 
 /* ── Podium ── */

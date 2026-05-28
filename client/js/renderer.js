@@ -256,7 +256,45 @@ const Renderer = (() => {
         finishPs.blendMode       = BABYLON.ParticleSystem.BLENDMODE_ADD;
         finishPs.start();
 
-        return { root, legMeshes, hitMesh: hit, dustPs, hitPs, shieldBubble, turboPs, finishPs };
+        // ── Blitz-Stun-Funken (gelb, Burst wenn Pferd von Blitz getroffen) ───
+        const blitzPs = new BABYLON.ParticleSystem('bltz_' + Math.random(), 100, scene);
+        blitzPs.particleTexture = _particleTex;
+        blitzPs.emitter         = emitAnchor;
+        blitzPs.minEmitBox      = new BABYLON.Vector3(-1.5, 0.0, -1.5);
+        blitzPs.maxEmitBox      = new BABYLON.Vector3( 1.5, 3.5,  1.5);
+        blitzPs.color1          = new BABYLON.Color4(1.0, 1.0, 0.1, 1.0);
+        blitzPs.color2          = new BABYLON.Color4(1.0, 0.55, 0.0, 0.9);
+        blitzPs.colorDead       = new BABYLON.Color4(0.8, 0.7, 0.0, 0.0);
+        blitzPs.minSize         = 0.10;  blitzPs.maxSize      = 0.42;
+        blitzPs.minLifeTime     = 0.15;  blitzPs.maxLifeTime  = 0.55;
+        blitzPs.emitRate        = 0;
+        blitzPs.direction1      = new BABYLON.Vector3(-8,  4, -8);
+        blitzPs.direction2      = new BABYLON.Vector3( 8, 14,  8);
+        blitzPs.minEmitPower    = 4;     blitzPs.maxEmitPower = 13;
+        blitzPs.gravity         = new BABYLON.Vector3(0, -16, 0);
+        blitzPs.blendMode       = BABYLON.ParticleSystem.BLENDMODE_ADD;
+        blitzPs.start();
+
+        // ── Windschatten-Partikel (cyan, kontinuierlich im Slipstream) ───────
+        const slipPs = new BABYLON.ParticleSystem('slip_' + Math.random(), 60, scene);
+        slipPs.particleTexture = _particleTex;
+        slipPs.emitter         = emitAnchor;
+        slipPs.minEmitBox      = new BABYLON.Vector3(-0.5, 0.5, -0.5);
+        slipPs.maxEmitBox      = new BABYLON.Vector3( 0.5, 2.5,  0.5);
+        slipPs.color1          = new BABYLON.Color4(0.1, 1.0, 0.85, 0.8);
+        slipPs.color2          = new BABYLON.Color4(0.0, 0.65, 1.0, 0.6);
+        slipPs.colorDead       = new BABYLON.Color4(0.1, 0.5,  0.8, 0.0);
+        slipPs.minSize         = 0.07;  slipPs.maxSize      = 0.26;
+        slipPs.minLifeTime     = 0.18;  slipPs.maxLifeTime  = 0.44;
+        slipPs.emitRate        = 0;
+        slipPs.direction1      = new BABYLON.Vector3(-1.5, 1.0, -7);
+        slipPs.direction2      = new BABYLON.Vector3( 1.5, 3.5, -2);
+        slipPs.minEmitPower    = 2;     slipPs.maxEmitPower = 6;
+        slipPs.gravity         = new BABYLON.Vector3(0, -4, 0);
+        slipPs.blendMode       = BABYLON.ParticleSystem.BLENDMODE_ADD;
+        slipPs.start();
+
+        return { root, legMeshes, hitMesh: hit, dustPs, hitPs, shieldBubble, turboPs, finishPs, blitzPs, slipPs };
     }
 
     function buildTree(x, z, h = 4, s = 1) {
@@ -806,6 +844,18 @@ const Renderer = (() => {
                 }
                 h._wasFinished = h.finished;
 
+                // Windschatten-Partikel (cyan, kontinuierlich wenn in Slipstream)
+                if (h.slipPs) h.slipPs.emitRate = h.slipstream ? 35 : 0;
+
+                // Blitz-Stun-Funken (Burst auf steigende Flanke)
+                if (h.blitzPs) {
+                    if (h.blitzStunned && !h._wasBlitzStunned) {
+                        h.blitzPs.emitRate = 140;
+                        setTimeout(() => { if (h.blitzPs) h.blitzPs.emitRate = 0; }, 700);
+                    }
+                    h._wasBlitzStunned = h.blitzStunned;
+                }
+
                 if (id === _playerId) {
                     if (cameraMode === 'overview') {
                         camera.target = BABYLON.Vector3.Lerp(camera.target, posY, 0.06);
@@ -1010,7 +1060,7 @@ const Renderer = (() => {
         }
     }
 
-    function updateHorse(id, progress, speed, lane, jumpHeight, penalized, isPlayer, rgbArr, name, riderCfg, horseType, laps, shieldActive, turboActive, finished) {
+    function updateHorse(id, progress, speed, lane, jumpHeight, penalized, isPlayer, rgbArr, name, riderCfg, horseType, laps, shieldActive, turboActive, finished, slipstream, blitzStunned) {
         const lapCount  = laps || 0;
         const unbound   = progress + lapCount * TRACK_LENGTH;   // nie wrappen → kein Jitter
         if (!horses[id]) {
@@ -1019,16 +1069,17 @@ const Renderer = (() => {
                 : isPlayer
                     ? new BABYLON.Color3(0.85, 0.55, 0.15)
                     : new BABYLON.Color3(0.3+Math.random()*0.5, 0.2+Math.random()*0.3, 0.1+Math.random()*0.4);
-            const { root, legMeshes, hitMesh, shieldBubble, turboPs, finishPs } = createHorse(scene, color);
+            const { root, legMeshes, hitMesh, shieldBubble, turboPs, finishPs, blitzPs, slipPs } = createHorse(scene, color);
             createRider(root, riderCfg || { face:0, shirt:0, pants:0 });
             const labelPlane = _createLabel(name || '?', isPlayer, horseType);
             labelPlane.parent = root;
             horses[id] = { root, legMeshes, hitMesh, labelPlane,
-                shieldBubble, turboPs, finishPs,
+                shieldBubble, turboPs, finishPs, blitzPs, slipPs,
                 displayProgress: unbound, targetProgress: unbound,
                 _trackedLaps: lapCount,
                 speed: 0, displayLane: lane, targetLane: lane, jumpHeight: 0, penalized: false,
-                shieldActive: false, turboActive: false, finished: false, _wasFinished: false };
+                shieldActive: false, turboActive: false, finished: false, _wasFinished: false,
+                slipstream: false, blitzStunned: false, _wasBlitzStunned: false };
         }
         const h = horses[id];
         // Rennen neu gestartet? (laps zurückgesprungen) → displayProgress direkt setzen
@@ -1042,6 +1093,8 @@ const Renderer = (() => {
         h.shieldActive   = !!shieldActive;
         h.turboActive    = !!turboActive;
         h.finished       = !!finished;
+        h.slipstream     = !!slipstream;
+        h.blitzStunned   = !!blitzStunned;
     }
 
     function updateObstacles(list) {
@@ -1219,6 +1272,38 @@ const Renderer = (() => {
 
             }
 
+            // ── ⚡ Blitz: leuchtender Blitz-Zickzack ──────────────────────────
+            else if (pu.type === 'blitz') {
+                const boltM = childMat(
+                    new BABYLON.Color3(1.0, 0.96, 0.0),
+                    new BABYLON.Color3(0.85, 0.65, 0.0));
+                const coreM = childMat(
+                    new BABYLON.Color3(1.0, 1.0, 0.6),
+                    new BABYLON.Color3(1.0, 0.90, 0.0));
+
+                // Zickzack aus 3 Segmenten (Blitzform)
+                const segs = [
+                    { x:  0.18, y:  0.58, rot: -0.85 },
+                    { x: -0.18, y:  0.00, rot:  0.85 },
+                    { x:  0.18, y: -0.58, rot: -0.85 },
+                ];
+                segs.forEach((s, i) => {
+                    const seg = BABYLON.MeshBuilder.CreateBox('pbl_'+i+'_'+pu.id,
+                        { width: 0.20, height: 0.68, depth: 0.20 }, scene);
+                    seg.rotation.z = s.rot;
+                    seg.position.x = s.x;
+                    seg.position.y = s.y;
+                    seg.material   = boltM;
+                    childMesh(seg);
+                });
+
+                // Leuchtender Kern in der Mitte
+                const core = BABYLON.MeshBuilder.CreateSphere('pbc_'+pu.id,
+                    { diameter: 0.42, segments: 5 }, scene);
+                core.material = coreM;
+                childMesh(core);
+            }
+
             powerupMeshes[pu.id] = root;
         }
     }
@@ -1238,6 +1323,8 @@ const Renderer = (() => {
         if (h.hitPs)       h.hitPs.dispose();
         if (h.turboPs)     h.turboPs.dispose();
         if (h.finishPs)    h.finishPs.dispose();
+        if (h.blitzPs)     h.blitzPs.dispose();
+        if (h.slipPs)      h.slipPs.dispose();
         if (h.labelPlane)  h.labelPlane.dispose();
         h.root.getChildMeshes().forEach(m => m.dispose());
         h.root.dispose();
