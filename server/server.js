@@ -19,8 +19,16 @@ const MIME = {
 
 // ── HTTP-Server ───────────────────────────────────────────────────────────────
 const httpServer = http.createServer((req, res) => {
-    let urlPath = req.url === '/' ? '/index.html' : req.url;
-    const filePath = path.join(CLIENT_DIR, urlPath);
+    // Query-Parameter abschneiden (z.B. ?v=123 von CDN/Proxys)
+    const pathname  = req.url.split('?')[0].split('#')[0];
+    const urlPath   = pathname === '/' ? '/index.html' : pathname;
+
+    // Path-Traversal verhindern
+    const filePath  = path.join(CLIENT_DIR, urlPath);
+    if (!filePath.startsWith(CLIENT_DIR)) {
+        res.writeHead(403); res.end('Forbidden'); return;
+    }
+
     fs.readFile(filePath, (err, data) => {
         if (err) { res.writeHead(404); res.end('Not found'); return; }
         const mime = MIME[path.extname(filePath)] || 'application/octet-stream';
