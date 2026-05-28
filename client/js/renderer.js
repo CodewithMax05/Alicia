@@ -108,10 +108,12 @@ const Renderer = (() => {
     }
 
     function createHorse(scene, bodyColor) {
-        const root    = new BABYLON.TransformNode('horse', scene);
-        const bodyMat = mat(scene, bodyColor);
-        const darkMat = mat(scene, new BABYLON.Color3(bodyColor.r * 0.45, bodyColor.g * 0.35, bodyColor.b * 0.25));
-        const hoofMat = mat(scene, new BABYLON.Color3(0.15, 0.1, 0.08));
+        const root      = new BABYLON.TransformNode('horse', scene);
+        const bodyMat   = mat(scene, bodyColor);
+        const darkMat   = mat(scene, new BABYLON.Color3(bodyColor.r * 0.45, bodyColor.g * 0.35, bodyColor.b * 0.25));
+        const hoofMat   = mat(scene, new BABYLON.Color3(0.15, 0.1, 0.08));
+        const eyeMat    = mat(scene, new BABYLON.Color3(0.05, 0.03, 0.02));           // Pupille: fast schwarz
+        const scleraMat = mat(scene, new BABYLON.Color3(0.72, 0.55, 0.38));           // Sklera: warmes Braun
 
         function part(name, size, pos, rotX, m) {
             const mesh = BABYLON.MeshBuilder.CreateBox(name, size, scene);
@@ -122,19 +124,49 @@ const Renderer = (() => {
             return mesh;
         }
 
-        part('body',   { width: 1.7, height: 1.5, depth: 4.2 }, [0, 2.1,  0],    0,     bodyMat);
-        part('neck',   { width: 0.85,height: 1.7, depth: 0.75}, [0, 3.2,  1.6], -0.45,  bodyMat);
-        part('head',   { width: 0.8, height: 0.9, depth: 1.4 }, [0, 4.0,  2.55], -0.1,  bodyMat);
-        part('snout',  { width: 0.55,height: 0.6, depth: 0.8 }, [0, 3.65, 3.2],   0.2,  bodyMat);
-        part('nlL',    { width: 0.12,height: 0.08,depth: 0.08}, [ 0.18, 3.45, 3.52], 0, darkMat);
-        part('nlR',    { width: 0.12,height: 0.08,depth: 0.08}, [-0.18, 3.45, 3.52], 0, darkMat);
-        part('earL',   { width: 0.18,height: 0.38,depth: 0.14}, [ 0.28, 4.55, 2.3],  0, bodyMat);
-        part('earR',   { width: 0.18,height: 0.38,depth: 0.14}, [-0.28, 4.55, 2.3],  0, bodyMat);
-        for (let i = 0; i < 5; i++)
-            part('mane'+i,{ width:0.15,height:0.55-i*0.05,depth:0.22},[0.4,4.1-i*0.3,2.0-i*0.3],0,darkMat);
-        part('tail1',  { width: 0.28,height: 1.1, depth: 0.28}, [0, 2.6, -2.35], -0.55, darkMat);
-        part('tail2',  { width: 0.18,height: 0.9, depth: 0.18}, [0, 1.8, -2.85], -0.35, darkMat);
+        // Körper — Brust etwas voluminöser als Hinterhand
+        part('body',   { width: 1.7,  height: 1.5,  depth: 4.2 }, [0,  2.1,   0],    0,     bodyMat);
+        part('chest',  { width: 1.95, height: 0.50, depth: 1.6 }, [0,  2.85,  0.8],  0,     bodyMat); // Brustmuskeln
+        part('neck',   { width: 0.85, height: 1.7,  depth: 0.75}, [0,  3.2,   1.6], -0.45,  bodyMat);
+        part('head',   { width: 0.8,  height: 0.9,  depth: 1.4 }, [0,  4.0,   2.55], -0.1,  bodyMat);
+        part('snout',  { width: 0.55, height: 0.6,  depth: 0.8 }, [0,  3.65,  3.2],   0.2,  bodyMat);
+        part('nlL',    { width: 0.12, height: 0.08, depth: 0.08}, [ 0.18, 3.45, 3.52], 0,   darkMat);
+        part('nlR',    { width: 0.12, height: 0.08, depth: 0.08}, [-0.18, 3.45, 3.52], 0,   darkMat);
+        // Ohren mit sichtbarer Innen-Fläche
+        part('earL',   { width: 0.18, height: 0.38, depth: 0.14}, [ 0.28, 4.55, 2.3],  0,   bodyMat);
+        part('earR',   { width: 0.18, height: 0.38, depth: 0.14}, [-0.28, 4.55, 2.3],  0,   bodyMat);
+        part('earLi',  { width: 0.08, height: 0.26, depth: 0.06}, [ 0.28, 4.53, 2.3],  0,   darkMat);
+        part('earRi',  { width: 0.08, height: 0.26, depth: 0.06}, [-0.28, 4.53, 2.3],  0,   darkMat);
 
+        // Augen: Sklera (braun) + Pupille (schwarz), je eine pro Seite
+        [0.405, -0.405].forEach((ex, i) => {
+            const ew = BABYLON.MeshBuilder.CreateSphere('ew'+i, { diameter: 0.24, segments: 5 }, scene);
+            ew.position = new BABYLON.Vector3(ex, 4.08, 2.72);
+            ew.material = scleraMat; ew.parent = root;
+            const ep = BABYLON.MeshBuilder.CreateSphere('ep'+i, { diameter: 0.15, segments: 4 }, scene);
+            ep.position = new BABYLON.Vector3(ex * 1.06, 4.08, 2.80);
+            ep.material = eyeMat; ep.parent = root;
+        });
+
+        // Mähne — fünf Strähnen auf der linken Seite des Halses
+        for (let i = 0; i < 5; i++)
+            part('mane'+i, { width:0.15, height:0.55-i*0.05, depth:0.22 },
+                [0.4, 4.1-i*0.3, 2.0-i*0.3], 0, darkMat);
+
+        // Schweif — zwei verjüngende Zylinder (natürlicher als Quader)
+        const tail1 = BABYLON.MeshBuilder.CreateCylinder('tail1',
+            { diameterTop: 0.16, diameterBottom: 0.34, height: 1.1, tessellation: 6 }, scene);
+        tail1.position  = new BABYLON.Vector3(0, 2.6, -2.35);
+        tail1.rotation.x = -0.55;
+        tail1.material  = darkMat; tail1.parent = root;
+
+        const tail2 = BABYLON.MeshBuilder.CreateCylinder('tail2',
+            { diameterTop: 0.04, diameterBottom: 0.15, height: 1.0, tessellation: 5 }, scene);
+        tail2.position  = new BABYLON.Vector3(0, 1.75, -2.92);
+        tail2.rotation.x = -0.30;
+        tail2.material  = darkMat; tail2.parent = root;
+
+        // Beine — Oberschenkel Quader, Unterschenkel Zylinder (runder Querschnitt)
         const legDefs = [
             { n:'FL', x: 0.58, z: 1.3,  phase: 0 },
             { n:'FR', x:-0.58, z: 1.3,  phase: Math.PI },
@@ -143,13 +175,14 @@ const Renderer = (() => {
         ];
         const legMeshes = [];
         for (const d of legDefs) {
-            const upper = BABYLON.MeshBuilder.CreateBox('u'+d.n,{width:0.38,height:0.9,depth:0.38},scene);
+            const upper = BABYLON.MeshBuilder.CreateBox('u'+d.n, { width:0.38, height:0.9, depth:0.38 }, scene);
             upper.position = new BABYLON.Vector3(d.x, 1.35, d.z);
             upper.material = bodyMat; upper.parent = root;
-            const lower = BABYLON.MeshBuilder.CreateBox('l'+d.n,{width:0.3,height:0.85,depth:0.3},scene);
+            const lower = BABYLON.MeshBuilder.CreateCylinder('l'+d.n,
+                { diameterTop: 0.22, diameterBottom: 0.28, height: 0.85, tessellation: 6 }, scene);
             lower.position = new BABYLON.Vector3(0, -0.85, 0);
             lower.material = bodyMat; lower.parent = upper;
-            const hoof = BABYLON.MeshBuilder.CreateBox('h'+d.n,{width:0.35,height:0.22,depth:0.42},scene);
+            const hoof = BABYLON.MeshBuilder.CreateBox('h'+d.n, { width:0.35, height:0.22, depth:0.42 }, scene);
             hoof.position = new BABYLON.Vector3(0, -0.53, 0.06);
             hoof.material = hoofMat; hoof.parent = lower;
             legMeshes.push({ upper, phase: d.phase });
@@ -312,12 +345,19 @@ const Renderer = (() => {
     }
 
     function buildTrees() {
+        // Tribünen-Sperrzone: linke Seite x < -62, |z| < 28 — rechte Seite x > 62, |z| < 22
+        function inStandZone(x, z) {
+            return (x < -62 && Math.abs(z) < 28) || (x > 62 && Math.abs(z) < 22);
+        }
         const count = 28;
         for (let i = 0; i < count; i++) {
             const t   = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
             const rx  = TRACK_A + 16 + Math.random() * 20;
             const rz  = TRACK_B + 16 + Math.random() * 20;
-            buildTree(Math.cos(t) * rx, Math.sin(t) * rz, 3.5 + Math.random() * 3, 0.8 + Math.random() * 0.5);
+            const tx  = Math.cos(t) * rx;
+            const tz  = Math.sin(t) * rz;
+            if (inStandZone(tx, tz)) continue;
+            buildTree(tx, tz, 3.5 + Math.random() * 3, 0.8 + Math.random() * 0.5);
         }
         // Innenseite: lockere Bäume
         for (let i = 0; i < 10; i++) {
@@ -873,6 +913,7 @@ const Renderer = (() => {
                             .subtract(fwd.scale(14))
                             .add(new BABYLON.Vector3(0, 6, 0));
                         followCam.position = BABYLON.Vector3.Lerp(followCam.position, targetCamPos, 0.07);
+                        if (followCam.position.y < 1.8) followCam.position.y = 1.8;  // nie unter Boden
                         const lookAt = posY.add(fwd.scale(8)).add(new BABYLON.Vector3(0, 1, 0));
                         followCam.setTarget(BABYLON.Vector3.Lerp(followCam.target, lookAt, 0.1));
 

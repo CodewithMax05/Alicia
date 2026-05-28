@@ -4,11 +4,11 @@ const GRAVITY       = 30;
 const WEATHER_OPTIONS = ['sunny', 'sunset', 'night', 'dawn', 'rainy', 'foggy'];
 
 const HORSE_TYPES = {
-    //         maxSpeed  accel  drain  jump
-    blitz: { maxSpeed: 34, acceleration: 22, staminaDrain: 13, jumpVelocity: 20 },  // Allrounder
-    sturm: { maxSpeed: 33, acceleration: 30, staminaDrain: 17, jumpVelocity: 20 },  // Burst-Beschleunigung
-    nebel: { maxSpeed: 32, acceleration: 19, staminaDrain:  5, jumpVelocity: 23 },  // Ausdauer, läuft nie leer
-    feuer: { maxSpeed: 38, acceleration: 17, staminaDrain: 22, jumpVelocity: 18 },  // Topspeed, brennt schnell
+    //         maxSpeed  accel  drain  jump    Konzept
+    blitz: { maxSpeed: 34, acceleration: 22, staminaDrain:  9, jumpVelocity: 20 },  // Allrounder — solide in allem, Sprint ~11s
+    sturm: { maxSpeed: 32, acceleration: 36, staminaDrain: 10, jumpVelocity: 20 },  // Beschleunigung — schnellste Reaktion, niedrigere Topspeed, Sprint ~10s
+    nebel: { maxSpeed: 30, acceleration: 18, staminaDrain:  6, jumpVelocity: 24 },  // Ausdauer — läuft ~17s, aber traagste Topspeed + Beschleunigung
+    feuer: { maxSpeed: 40, acceleration: 17, staminaDrain: 10, jumpVelocity: 18 },  // Topspeed — schnellstes Pferd, träge Beschleunigung, Sprint ~10s
 };
 
 class RaceManager {
@@ -63,6 +63,7 @@ class RaceManager {
             blitzStunTimer:  0,
             _blockCooldown:  0,
             exhausted:       false,
+            exhaustedTimer:  0,
             lapStartTime:    0,
             lapTimes:        [],
             finishTime:      null,
@@ -300,10 +301,14 @@ class RaceManager {
             if (h.blitzStunTimer  > 0) h.blitzStunTimer  -= deltaTime;
             if (h._blockCooldown  > 0) h._blockCooldown  -= deltaTime;
 
-            // Erschöpfungs-Erholung (langsame Stamina-Regen wenn exhausted)
+            // Erschöpfungs-Erholung (max. 3s, dann automatisch beendet)
             if (h.exhausted) {
-                h.stamina = Math.min(100, h.stamina + 3.9 * deltaTime);  // +30% schneller
-                if (h.stamina >= 30) h.exhausted = false;
+                h.exhaustedTimer += deltaTime;
+                h.stamina = Math.min(100, h.stamina + 3.9 * deltaTime);
+                if (h.stamina >= 30 || h.exhaustedTimer >= 3.0) {
+                    h.exhausted = false;
+                    h.stamina   = Math.max(h.stamina, 30); // mindestens 30 beim Ende
+                }
             }
 
             // Effektive Maximalgeschwindigkeit:
@@ -332,7 +337,7 @@ class RaceManager {
                 // Windschatten: 30% weniger Stamina-Verbrauch
                 const drainFactor = h.slipstream ? 0.70 : 1.0;
                 h.stamina = Math.max(0, h.stamina - h.staminaDrain * drainFactor * deltaTime);
-                if (h.stamina <= 0) h.exhausted = true;
+                if (h.stamina <= 0) { h.exhausted = true; h.exhaustedTimer = 0; }
             } else if (h.exhausted) {
                 // Erschöpft: abbremsen auf das fixe erschöpfte Cap (kein Turbo-Snap-Bug)
                 h.speed = Math.max(baseMax, h.speed - h.acceleration * 0.5 * deltaTime);
