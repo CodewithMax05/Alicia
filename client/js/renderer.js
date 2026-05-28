@@ -13,6 +13,7 @@ const Renderer = (() => {
     const obstacleMeshes = {};
     const powerupMeshes  = {};
     let _playerId        = null;
+    let _finishBanner    = null;
     const _flagMeshes    = [];
     const _spectators    = [];       // { body, baseY, z }
     const _waves         = [];       // { z0, dir, startTime }
@@ -204,7 +205,58 @@ const Renderer = (() => {
         hitPs.blendMode        = BABYLON.ParticleSystem.BLENDMODE_ADD;
         hitPs.start();
 
-        return { root, legMeshes, hitMesh: hit, dustPs, hitPs };
+        // ── Schild-Aura (blaue Blase, pulsiert wenn Schild aktiv) ───────────────
+        const shieldBubble = BABYLON.MeshBuilder.CreateSphere('shB_' + Math.random(),
+            { diameter: 5.4, segments: 8 }, scene);
+        const shieldMat = new BABYLON.StandardMaterial('shm_' + Math.random(), scene);
+        shieldMat.diffuseColor    = new BABYLON.Color3(0.20, 0.55, 1.0);
+        shieldMat.emissiveColor   = new BABYLON.Color3(0.08, 0.30, 0.90);
+        shieldMat.alpha           = 0.22;
+        shieldMat.backFaceCulling = false;
+        shieldBubble.material     = shieldMat;
+        shieldBubble.position.y   = 2.2;
+        shieldBubble.parent       = root;
+        shieldBubble.isVisible    = false;
+
+        // ── Turbo-Flammen (Partikel hinter dem Pferd) ────────────────────────
+        const turboPs = new BABYLON.ParticleSystem('turbo_' + Math.random(), 90, scene);
+        turboPs.particleTexture = _particleTex;
+        turboPs.emitter         = emitAnchor;
+        turboPs.minEmitBox      = new BABYLON.Vector3(-0.55, 0.4, -2.2);
+        turboPs.maxEmitBox      = new BABYLON.Vector3( 0.55, 2.6, -0.8);
+        turboPs.color1          = new BABYLON.Color4(1.0, 0.82, 0.0, 1.0);
+        turboPs.color2          = new BABYLON.Color4(1.0, 0.28, 0.0, 0.9);
+        turboPs.colorDead       = new BABYLON.Color4(0.4, 0.05, 0.0, 0.0);
+        turboPs.minSize         = 0.15;  turboPs.maxSize      = 0.55;
+        turboPs.minLifeTime     = 0.10;  turboPs.maxLifeTime  = 0.30;
+        turboPs.emitRate        = 0;
+        turboPs.direction1      = new BABYLON.Vector3(-1.5, 0.5, -9);
+        turboPs.direction2      = new BABYLON.Vector3( 1.5, 3.5, -4);
+        turboPs.minEmitPower    = 3;     turboPs.maxEmitPower = 9;
+        turboPs.gravity         = new BABYLON.Vector3(0, -6, 0);
+        turboPs.blendMode       = BABYLON.ParticleSystem.BLENDMODE_ADD;
+        turboPs.start();
+
+        // ── Ziel-Konfetti am Pferd (einmaliger Burst beim Einlauf) ───────────
+        const finishPs = new BABYLON.ParticleSystem('fin_' + Math.random(), 220, scene);
+        finishPs.particleTexture = _particleTex;
+        finishPs.emitter         = emitAnchor;
+        finishPs.minEmitBox      = new BABYLON.Vector3(-1.0, 0.5, -1.0);
+        finishPs.maxEmitBox      = new BABYLON.Vector3( 1.0, 3.0,  1.0);
+        finishPs.color1          = new BABYLON.Color4(1.0, 0.90, 0.1, 1.0);
+        finishPs.color2          = new BABYLON.Color4(0.2,  0.8, 1.0, 1.0);
+        finishPs.colorDead       = new BABYLON.Color4(1.0,  0.5, 0.0, 0.0);
+        finishPs.minSize         = 0.18;  finishPs.maxSize      = 0.50;
+        finishPs.minLifeTime     = 1.2;   finishPs.maxLifeTime  = 3.0;
+        finishPs.emitRate        = 0;
+        finishPs.direction1      = new BABYLON.Vector3(-4,  6, -4);
+        finishPs.direction2      = new BABYLON.Vector3( 4, 18,  4);
+        finishPs.minEmitPower    = 2;     finishPs.maxEmitPower = 9;
+        finishPs.gravity         = new BABYLON.Vector3(0, -7, 0);
+        finishPs.blendMode       = BABYLON.ParticleSystem.BLENDMODE_ADD;
+        finishPs.start();
+
+        return { root, legMeshes, hitMesh: hit, dustPs, hitPs, shieldBubble, turboPs, finishPs };
     }
 
     function buildTree(x, z, h = 4, s = 1) {
@@ -654,6 +706,43 @@ const Renderer = (() => {
         beam.position = new BABYLON.Vector3(TRACK_A, gateH, 0);
         beam.material  = gateMat();
 
+        // FINISH-Banner über dem Tor
+        const bannerPlane = BABYLON.MeshBuilder.CreatePlane('banner',
+            { width: 9.0, height: 1.5 }, scene);
+        bannerPlane.position = new BABYLON.Vector3(TRACK_A, gateH + 1.6, 0);
+        bannerPlane.billboardMode = BABYLON.Mesh.BILLBOARDMODE_NONE;
+        const banTex = new BABYLON.DynamicTexture('bantex', { width: 512, height: 80 }, scene, false);
+        const bCtx   = banTex.getContext();
+        // Hintergrund
+        bCtx.fillStyle = 'rgba(8,4,0,0.88)';
+        bCtx.fillRect(0, 0, 512, 80);
+        // Schachbrettstreifen links & rechts
+        const checkSize = 20;
+        for (let ci = 0; ci < 4; ci++) {
+            bCtx.fillStyle = ci % 2 === 0 ? '#ffffff' : '#000000';
+            bCtx.fillRect(ci * checkSize, 0, checkSize, 80);
+            bCtx.fillStyle = ci % 2 === 0 ? '#000000' : '#ffffff';
+            bCtx.fillRect(512 - (ci + 1) * checkSize, 0, checkSize, 80);
+        }
+        // Text
+        bCtx.font         = 'bold 48px Arial, sans-serif';
+        bCtx.textAlign    = 'center';
+        bCtx.textBaseline = 'middle';
+        bCtx.shadowColor  = 'rgba(0,0,0,0.9)';
+        bCtx.shadowBlur   = 8;
+        bCtx.fillStyle    = '#ffd700';
+        bCtx.fillText('FINISH', 256, 42);
+        banTex.update();
+        const banMat = new BABYLON.StandardMaterial('banm', scene);
+        banMat.diffuseTexture  = banTex;
+        banMat.emissiveTexture = banTex;
+        banMat.emissiveColor   = new BABYLON.Color3(1, 1, 1);
+        banMat.useAlphaFromDiffuseTexture = true;
+        banMat.disableLighting = true;
+        banMat.backFaceCulling = false;
+        bannerPlane.material   = banMat;
+        _finishBanner = bannerPlane;
+
         // Kulisse
         buildTrees();
         buildStands();
@@ -698,6 +787,25 @@ const Renderer = (() => {
                 }
                 h._wasPenalized = h.penalized;
 
+                // Schild-Aura (blaue Blase pulsiert)
+                if (h.shieldBubble) {
+                    h.shieldBubble.isVisible = h.shieldActive;
+                    if (h.shieldActive) {
+                        const pulse = 1.0 + 0.06 * Math.sin(performance.now() * 0.0035);
+                        h.shieldBubble.scaling.setAll(pulse);
+                    }
+                }
+
+                // Turbo-Flammen-Schweif
+                if (h.turboPs) h.turboPs.emitRate = h.turboActive ? 75 : 0;
+
+                // Ziel-Konfetti am Pferd (steigende Flanke: Pferd erreicht Ziel)
+                if (h.finished && !h._wasFinished && h.finishPs) {
+                    h.finishPs.emitRate = 200;
+                    setTimeout(() => { if (h.finishPs) h.finishPs.emitRate = 0; }, 900);
+                }
+                h._wasFinished = h.finished;
+
                 if (id === _playerId) {
                     if (cameraMode === 'overview') {
                         camera.target = BABYLON.Vector3.Lerp(camera.target, posY, 0.06);
@@ -739,6 +847,12 @@ const Renderer = (() => {
                 _spectators.forEach(sp => {
                     sp.body.position.y = sp.baseY + (sp._dy || 0);
                 });
+            }
+
+            // FINISH-Banner pulsiert
+            if (_finishBanner) {
+                const glow = 0.65 + 0.35 * Math.abs(Math.sin(puNow * 1.8));
+                _finishBanner.material.emissiveColor = new BABYLON.Color3(glow, glow * 0.88, glow * 0.55);
             }
 
             // Fahnen-Flattern
@@ -896,7 +1010,7 @@ const Renderer = (() => {
         }
     }
 
-    function updateHorse(id, progress, speed, lane, jumpHeight, penalized, isPlayer, rgbArr, name, riderCfg, horseType, laps) {
+    function updateHorse(id, progress, speed, lane, jumpHeight, penalized, isPlayer, rgbArr, name, riderCfg, horseType, laps, shieldActive, turboActive, finished) {
         const lapCount  = laps || 0;
         const unbound   = progress + lapCount * TRACK_LENGTH;   // nie wrappen → kein Jitter
         if (!horses[id]) {
@@ -905,14 +1019,16 @@ const Renderer = (() => {
                 : isPlayer
                     ? new BABYLON.Color3(0.85, 0.55, 0.15)
                     : new BABYLON.Color3(0.3+Math.random()*0.5, 0.2+Math.random()*0.3, 0.1+Math.random()*0.4);
-            const { root, legMeshes, hitMesh } = createHorse(scene, color);
+            const { root, legMeshes, hitMesh, shieldBubble, turboPs, finishPs } = createHorse(scene, color);
             createRider(root, riderCfg || { face:0, shirt:0, pants:0 });
             const labelPlane = _createLabel(name || '?', isPlayer, horseType);
             labelPlane.parent = root;
             horses[id] = { root, legMeshes, hitMesh, labelPlane,
+                shieldBubble, turboPs, finishPs,
                 displayProgress: unbound, targetProgress: unbound,
                 _trackedLaps: lapCount,
-                speed: 0, displayLane: lane, targetLane: lane, jumpHeight: 0, penalized: false };
+                speed: 0, displayLane: lane, targetLane: lane, jumpHeight: 0, penalized: false,
+                shieldActive: false, turboActive: false, finished: false, _wasFinished: false };
         }
         const h = horses[id];
         // Rennen neu gestartet? (laps zurückgesprungen) → displayProgress direkt setzen
@@ -923,6 +1039,9 @@ const Renderer = (() => {
         h.targetLane     = lane;
         h.jumpHeight     = jumpHeight;
         h.penalized      = penalized;
+        h.shieldActive   = !!shieldActive;
+        h.turboActive    = !!turboActive;
+        h.finished       = !!finished;
     }
 
     function updateObstacles(list) {
@@ -988,56 +1107,138 @@ const Renderer = (() => {
     function updatePowerups(list) {
         if (!list) return;
 
-        // Farben werden hier (lazy) erstellt, wenn BABYLON garantiert bereit ist
-        const PU_RGB = {
-            stamina: [0.1, 1.0, 0.3],
-            turbo:   [1.0, 0.85, 0.0],
-            shield:  [0.2, 0.55, 1.0],
-        };
-
         // Aufgesammelte entfernen
         const activeIds = new Set(list.map(p => p.id));
         for (const id of Object.keys(powerupMeshes)) {
             if (!activeIds.has(id)) {
-                powerupMeshes[id].dispose();
+                const root = powerupMeshes[id];
+                root.getChildMeshes().forEach(m => m.dispose());
+                root.dispose();
                 delete powerupMeshes[id];
             }
         }
 
-        // Neue hinzufügen
         for (const pu of list) {
             if (powerupMeshes[pu.id]) continue;
 
             const laneOff = LANE_OFFSETS[pu.lane] !== undefined ? LANE_OFFSETS[pu.lane] : 0;
             const pos     = trackPosition(pu.progress, laneOff);
-            const rgb     = PU_RGB[pu.type] || [1, 1, 1];
-            const color   = new BABYLON.Color3(rgb[0], rgb[1], rgb[2]);
 
-            const sphere = BABYLON.MeshBuilder.CreateSphere(
-                'pu_' + pu.id, { diameter: 1.6, segments: 8 }, scene);
-            sphere.position = new BABYLON.Vector3(pos.x, 1.8, pos.z);
-            sphere._phase   = pu.progress * 0.05;
+            // Root-Node für Gruppe (Animation läuft auf Root)
+            const root    = new BABYLON.TransformNode('pur_' + pu.id, scene);
+            root.position = new BABYLON.Vector3(pos.x, 1.8, pos.z);
+            root._phase   = pu.progress * 0.05;
 
-            const m = new BABYLON.StandardMaterial('pum_' + pu.id, scene);
-            m.diffuseColor  = color;
-            m.emissiveColor = new BABYLON.Color3(rgb[0] * 0.5, rgb[1] * 0.5, rgb[2] * 0.5);
-            sphere.material = m;
+            function childMat(diff, emissive, alpha) {
+                const m = new BABYLON.StandardMaterial('pm_' + Math.random(), scene);
+                m.diffuseColor  = diff;
+                m.emissiveColor = emissive;
+                if (alpha !== undefined) m.alpha = alpha;
+                m.backFaceCulling = false;
+                return m;
+            }
+            function childMesh(mesh) { mesh.parent = root; return mesh; }
 
-            powerupMeshes[pu.id] = sphere;
+            // ── 🛡️ Schild: aufrechter Ring + Hexagon-Fläche ─────────────────────
+            if (pu.type === 'shield') {
+                const faceM = childMat(
+                    new BABYLON.Color3(0.18, 0.50, 1.0),
+                    new BABYLON.Color3(0.06, 0.22, 0.65), 0.80);
+                const rimM  = childMat(
+                    new BABYLON.Color3(0.35, 0.70, 1.0),
+                    new BABYLON.Color3(0.18, 0.45, 0.95));
+
+                // Hexagon-Fläche (stehend)
+                const face = BABYLON.MeshBuilder.CreateCylinder('psf_'+pu.id,
+                    { diameter: 1.55, height: 0.10, tessellation: 6 }, scene);
+                face.rotation.x = Math.PI / 2;
+                face.material   = faceM;
+                childMesh(face);
+
+                // Leuchtender Rand
+                const rim = BABYLON.MeshBuilder.CreateTorus('psr_'+pu.id,
+                    { diameter: 1.55, thickness: 0.20, tessellation: 32 }, scene);
+                rim.rotation.x = Math.PI / 2;
+                rim.material   = rimM;
+                childMesh(rim);
+
+                // Schildbuckel in der Mitte
+                const boss = BABYLON.MeshBuilder.CreateSphere('psb_'+pu.id,
+                    { diameter: 0.44, segments: 6 }, scene);
+                boss.scaling.z = 0.45;
+                boss.rotation.x = Math.PI / 2;
+                boss.material   = rimM;
+                childMesh(boss);
+            }
+
+            // ── ⚡ Turbo: 3 leuchtende Pfeil-Chevrons (">>>") ────────────────
+            else if (pu.type === 'turbo') {
+                const arrowM = childMat(
+                    new BABYLON.Color3(1.0, 0.88, 0.0),
+                    new BABYLON.Color3(0.7, 0.55, 0.0));
+
+                for (let i = 0; i < 3; i++) {
+                    const xOff = (i - 1) * 0.55;
+                    const h2   = 0.65 - i * 0.04;
+
+                    // Oberer Arm "\"
+                    const top = BABYLON.MeshBuilder.CreateBox('pta_'+i+'_'+pu.id,
+                        { width: 0.14, height: h2, depth: 0.16 }, scene);
+                    top.rotation.z = -Math.PI / 4;
+                    top.position   = new BABYLON.Vector3(xOff,  h2 * 0.34, 0);
+                    top.material   = arrowM;
+                    childMesh(top);
+
+                    // Unterer Arm "/"
+                    const bot = BABYLON.MeshBuilder.CreateBox('ptb_'+i+'_'+pu.id,
+                        { width: 0.14, height: h2, depth: 0.16 }, scene);
+                    bot.rotation.z = Math.PI / 4;
+                    bot.position   = new BABYLON.Vector3(xOff, -h2 * 0.34, 0);
+                    bot.material   = arrowM;
+                    childMesh(bot);
+                }
+            }
+
+            // ── 💚 Stamina: grünes Kreuz (Gesundheits-Symbol) ────────────────
+            else if (pu.type === 'stamina') {
+                const crossM = childMat(
+                    new BABYLON.Color3(0.08, 0.92, 0.28),
+                    new BABYLON.Color3(0.04, 0.50, 0.14));
+
+                // Horizontaler Balken
+                const hBar = BABYLON.MeshBuilder.CreateBox('psh_'+pu.id,
+                    { width: 1.50, height: 0.44, depth: 0.22 }, scene);
+                hBar.material = crossM;
+                childMesh(hBar);
+
+                // Vertikaler Balken
+                const vBar = BABYLON.MeshBuilder.CreateBox('psv_'+pu.id,
+                    { width: 0.44, height: 1.50, depth: 0.22 }, scene);
+                vBar.material = crossM;
+                childMesh(vBar);
+
+            }
+
+            powerupMeshes[pu.id] = root;
         }
     }
 
     function clearPowerups() {
-        for (const m of Object.values(powerupMeshes)) m.dispose();
+        for (const root of Object.values(powerupMeshes)) {
+            root.getChildMeshes().forEach(m => m.dispose());
+            root.dispose();
+        }
         Object.keys(powerupMeshes).forEach(k => delete powerupMeshes[k]);
     }
 
     function removeHorse(id) {
         if (!horses[id]) return;
         const h = horses[id];
-        if (h.dustPs)     h.dustPs.dispose();
-        if (h.hitPs)      h.hitPs.dispose();
-        if (h.labelPlane) h.labelPlane.dispose();
+        if (h.dustPs)      h.dustPs.dispose();
+        if (h.hitPs)       h.hitPs.dispose();
+        if (h.turboPs)     h.turboPs.dispose();
+        if (h.finishPs)    h.finishPs.dispose();
+        if (h.labelPlane)  h.labelPlane.dispose();
         h.root.getChildMeshes().forEach(m => m.dispose());
         h.root.dispose();
         delete horses[id];
