@@ -203,7 +203,7 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         // ── Pferde ───────────────────────────────────────────────────────────
         for (const [id, h] of Object.entries(state.horses)) {
             const col = (id === pid) ? playerColor : null;
-            Renderer.updateHorse(id, h.progress, h.speed, h.lane ?? 1, h.jumpHeight ?? 0, !!h.penalized, id === pid, col, h.name, h.rider, h.horseType);
+            Renderer.updateHorse(id, h.progress, h.speed, h.lane ?? 1, h.jumpHeight ?? 0, !!h.penalized, id === pid, col, h.name, h.rider, h.horseType, h.laps ?? 0);
         }
 
         // ── Hindernisse ──────────────────────────────────────────────────────

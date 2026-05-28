@@ -665,10 +665,8 @@ const Renderer = (() => {
         // Render-Loop
         scene.registerBeforeRender(() => {
             for (const [id, h] of Object.entries(horses)) {
-                let diff = h.targetProgress - h.displayProgress;
-                if (diff < -TRACK_LENGTH/2) diff += TRACK_LENGTH;
-                if (diff >  TRACK_LENGTH/2) diff -= TRACK_LENGTH;
-                h.displayProgress += diff * 0.25;
+                // Unbounded interpolation — kein Modulo-Wrapping nötig
+                h.displayProgress += (h.targetProgress - h.displayProgress) * 0.25;
 
                 h.displayLane += (h.targetLane - h.displayLane) * 0.18;
                 const laneOff = -3.5 + h.displayLane * 3.5;
@@ -898,7 +896,9 @@ const Renderer = (() => {
         }
     }
 
-    function updateHorse(id, progress, speed, lane, jumpHeight, penalized, isPlayer, rgbArr, name, riderCfg, horseType) {
+    function updateHorse(id, progress, speed, lane, jumpHeight, penalized, isPlayer, rgbArr, name, riderCfg, horseType, laps) {
+        const lapCount  = laps || 0;
+        const unbound   = progress + lapCount * TRACK_LENGTH;   // nie wrappen → kein Jitter
         if (!horses[id]) {
             const color = rgbArr
                 ? new BABYLON.Color3(rgbArr[0], rgbArr[1], rgbArr[2])
@@ -909,11 +909,16 @@ const Renderer = (() => {
             createRider(root, riderCfg || { face:0, shirt:0, pants:0 });
             const labelPlane = _createLabel(name || '?', isPlayer, horseType);
             labelPlane.parent = root;
-            horses[id] = { root, legMeshes, hitMesh, labelPlane, displayProgress: progress, targetProgress: progress,
+            horses[id] = { root, legMeshes, hitMesh, labelPlane,
+                displayProgress: unbound, targetProgress: unbound,
+                _trackedLaps: lapCount,
                 speed: 0, displayLane: lane, targetLane: lane, jumpHeight: 0, penalized: false };
         }
         const h = horses[id];
-        h.targetProgress = progress;
+        // Rennen neu gestartet? (laps zurückgesprungen) → displayProgress direkt setzen
+        if (lapCount < h._trackedLaps) h.displayProgress = unbound;
+        h._trackedLaps   = lapCount;
+        h.targetProgress = unbound;
         h.speed          = speed;
         h.targetLane     = lane;
         h.jumpHeight     = jumpHeight;

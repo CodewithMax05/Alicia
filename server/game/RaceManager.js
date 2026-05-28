@@ -13,18 +13,19 @@ const HORSE_TYPES = {
 
 class RaceManager {
     constructor(onRaceEnd) {
-        this.horses        = new Map();
-        this.state         = 'waiting';
-        this.countdown     = 0;
-        this.finishOrder   = [];
-        this.obstacles     = [];
-        this.powerups      = [];
-        this._raceTime     = 0;
-        this.onRaceEnd     = onRaceEnd;
-        this._timer        = null;
-        this._lobbyTimer   = null;
-        this.weatherPreset = 'sunny';
-        this.readyPlayers  = new Set();
+        this.horses          = new Map();
+        this.state           = 'waiting';
+        this.countdown       = 0;
+        this.finishOrder     = [];
+        this.obstacles       = [];
+        this.powerups        = [];
+        this._raceTime       = 0;
+        this.onRaceEnd       = onRaceEnd;
+        this._timer          = null;
+        this._lobbyTimer     = null;
+        this.weatherPreset   = 'sunny';
+        this.readyPlayers    = new Set();
+        this._puRespawnQueue = [];   // [{type, timer}]
     }
 
     // ── Pferde ────────────────────────────────────────────────────────────────
@@ -144,12 +145,13 @@ class RaceManager {
 
     _startCountdown() {
         clearInterval(this._lobbyTimer);
-        this.readyPlayers  = new Set();   // Bereit-Status für nächste Runde zurücksetzen
-        this.state         = 'countdown';
-        this.countdown     = 3;
-        this.finishOrder   = [];
-        this.obstacles     = this._generateObstacles();
-        this.powerups      = this._generatePowerups();
+        this.readyPlayers    = new Set();
+        this._puRespawnQueue = [];
+        this.state           = 'countdown';
+        this.countdown       = 3;
+        this.finishOrder     = [];
+        this.obstacles       = this._generateObstacles();
+        this.powerups        = this._generatePowerups();
         this._raceTime     = 0;
         this.weatherPreset = WEATHER_OPTIONS[Math.floor(Math.random() * WEATHER_OPTIONS.length)];
 
@@ -209,20 +211,27 @@ class RaceManager {
     }
 
     _generatePowerups() {
+        // Nur 3 Power-Ups zu Rennbeginn (einer pro Typ), Rest spawnt dynamisch nach
         const types = ['stamina', 'turbo', 'shield'];
-        const pups  = [];
-        const count = 9;   // 3 pro Typ, gut über die Strecke verteilt
-        for (let i = 0; i < count; i++) {
-            const base = 120 + i * ((TRACK_LENGTH - 240) / count) + (Math.random() - 0.5) * 35;
-            pups.push({
-                id:        `pu_${i}`,
-                progress:  Math.round(base),
-                lane:      Math.floor(Math.random() * 3),
-                type:      types[i % types.length],
-                collected: false,
-            });
-        }
-        return pups;
+        return types.map((type, i) => ({
+            id:        `pu_start_${i}`,
+            progress:  Math.round(120 + i * 280 + (Math.random() - 0.5) * 60),
+            lane:      Math.floor(Math.random() * 3),
+            type,
+            collected: false,
+        }));
+    }
+
+    _spawnPowerup(type) {
+        // Eingesammelte bereinigen, dann neues Power-Up an zufälliger Stelle hinzufügen
+        this.powerups = this.powerups.filter(p => !p.collected);
+        this.powerups.push({
+            id:       `pu_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+            progress: Math.round(80 + Math.random() * (TRACK_LENGTH - 160)),
+            lane:     Math.floor(Math.random() * 3),
+            type,
+            collected: false,
+        });
     }
 
     _endRace() {
@@ -238,6 +247,14 @@ class RaceManager {
         if (this.state !== 'racing') return;
 
         this._raceTime += deltaTime;
+
+        // ── Power-Up Respawn-Queue ────────────────────────────────────────────
+        for (let i = this._puRespawnQueue.length - 1; i >= 0; i--) {
+            this._puRespawnQueue[i].timer -= deltaTime;
+            if (this._puRespawnQueue[i].timer <= 0) {
+                this._spawnPowerup(this._puRespawnQueue.splice(i, 1)[0].type);
+            }
+        }
 
         // ── Slider-Positionen aktualisieren ───────────────────────────────────
         for (const obs of this.obstacles) {
@@ -337,6 +354,7 @@ class RaceManager {
                 if (Math.abs(h.progress - pu.progress) > 8) continue;
 
                 pu.collected = true;
+                this._puRespawnQueue.push({ type: pu.type, timer: 8 + Math.random() * 8 });
                 if (pu.type === 'stamina') { h.stamina = 100; h.exhausted = false; }
                 if (pu.type === 'turbo')   { h.turboTimer = 3.0; h.exhausted = false; }
                 if (pu.type === 'shield')  { h.shieldActive = true; }
