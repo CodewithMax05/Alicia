@@ -757,65 +757,10 @@ const Renderer = (() => {
         _skyDome.material  = _skyMat;
         _skyDome.isPickable = false;
 
-        // Boden — DynamicTexture mit Grasvariationen
+        // Boden
         const ground = BABYLON.MeshBuilder.CreateGround('ground', { width: 340, height: 220 }, scene);
-        {
-            const gtex = new BABYLON.DynamicTexture('groundTex', { width: 512, height: 512 }, scene, false);
-            const gc   = gtex.getContext();
-            // Basisfarbe: satte Wiese
-            gc.fillStyle = '#3d7a2e';
-            gc.fillRect(0, 0, 512, 512);
-            // Helle Grashalme / dunkle Schatten-Flecken für Tiefe
-            for (let i = 0; i < 700; i++) {
-                const gx = Math.random() * 512, gy = Math.random() * 512;
-                const gr = 3 + Math.random() * 13;
-                gc.fillStyle = Math.random() > 0.5
-                    ? `rgba(80,168,38,${(0.07 + Math.random() * 0.11).toFixed(2)})`
-                    : `rgba(18,48,8,${(0.06 + Math.random() * 0.09).toFixed(2)})`;
-                gc.beginPath();
-                gc.ellipse(gx, gy, gr, gr * 0.45, Math.random() * Math.PI, 0, Math.PI * 2);
-                gc.fill();
-            }
-            gtex.update();
-            const gmat = new BABYLON.StandardMaterial('groundMat', scene);
-            gmat.diffuseTexture       = gtex;
-            gmat.diffuseTexture.uScale = 20;
-            gmat.diffuseTexture.vScale = 13;
-            gmat.specularColor = new BABYLON.Color3(0.03, 0.05, 0.03);
-            ground.material = gmat;
-        }
+        ground.material       = mat(scene, new BABYLON.Color3(0.22, 0.55, 0.22));
         ground.receiveShadows = true;
-
-        // Innenfläche (Infield) — leicht dunkleres Grün, setzt sich von der Bahn ab
-        const infield = BABYLON.MeshBuilder.CreateGround('infield', { width: 340, height: 220 }, scene);
-        {
-            const iftex = new BABYLON.DynamicTexture('infieldTex', { width: 256, height: 256 }, scene, false);
-            const ic    = iftex.getContext();
-            ic.fillStyle = '#2d6020';
-            ic.fillRect(0, 0, 256, 256);
-            for (let i = 0; i < 350; i++) {
-                const ix = Math.random() * 256, iy = Math.random() * 256;
-                const ir = 2 + Math.random() * 9;
-                ic.fillStyle = Math.random() > 0.5
-                    ? `rgba(60,130,28,${(0.07 + Math.random() * 0.10).toFixed(2)})`
-                    : `rgba(14,38,6,${(0.06 + Math.random() * 0.08).toFixed(2)})`;
-                ic.beginPath();
-                ic.ellipse(ix, iy, ir, ir * 0.45, Math.random() * Math.PI, 0, Math.PI * 2);
-                ic.fill();
-            }
-            iftex.update();
-            const ifmat = new BABYLON.StandardMaterial('infieldMat', scene);
-            ifmat.diffuseTexture       = iftex;
-            ifmat.diffuseTexture.uScale = 14;
-            ifmat.diffuseTexture.vScale = 9;
-            ifmat.specularColor = new BABYLON.Color3(0.02, 0.04, 0.02);
-            infield.material = ifmat;
-        }
-        infield.position.y    = 0.03;   // minimal über Boden, damit kein Z-Fighting
-        infield.receiveShadows = true;
-        // Infield auf die elliptische Innenbahn beschränken via ClipPlanes — einfacher: Skalierung
-        infield.scaling.x = (TRACK_A - TW / 2 - 1) / 170;
-        infield.scaling.z = (TRACK_B - TW / 2 - 1) / 110;
 
         // Strecken-Ribbon
         const inner = [], outer = [];
