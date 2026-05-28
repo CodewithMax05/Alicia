@@ -197,34 +197,31 @@ class RaceManager {
 
     _generateObstacles() {
         const obs     = [];
-        const blocked = [];   // wächst mit jeder platzierten Position
+        const blocked = [];
 
-        // ── Statische Hindernisse (Kegel + Hürden) — min. 50 Einheiten Abstand ──
-        const fixedCount = 12;
-        for (let i = 0; i < fixedCount; i++) {
-            const hurdle = Math.random() < 0.22;
-            const pos    = this._findPos(blocked, 80);
+        // ── Heuballen (einzelne Spur, überspringen oder ausweichen) ────────────
+        for (let i = 0; i < 5; i++) {
+            const pos = this._findPos(blocked, 80);
             blocked.push({ pos, minDist: 50 });
-            obs.push({
-                id:       i,
-                progress: pos,
-                lane:     hurdle ? -1 : Math.floor(Math.random() * 3),
-                type:     hurdle ? 'hurdle' : 'cone',
-            });
+            obs.push({ id: i, progress: pos, lane: Math.floor(Math.random() * 3), type: 'haybale' });
         }
 
-        // ── Schiebebanden — min. 65 Einheiten Abstand (überspan alle Spuren) ────
-        for (let i = 0; i < 4; i++) {
+        // ── Holzzäune (alle Spuren, Sprung zwingend nötig) ──────────────────────
+        for (let i = 0; i < 2; i++) {
+            const pos = this._findPos(blocked, 80);
+            blocked.push({ pos, minDist: 55 });
+            obs.push({ id: 5 + i, progress: pos, lane: -1, type: 'fence' });
+        }
+
+        // ── Heuwagen (Schiebebande mit Heuthema) ─────────────────────────────────
+        for (let i = 0; i < 3; i++) {
             const pos = this._findPos(blocked, 100);
             blocked.push({ pos, minDist: 65 });
             obs.push({
-                id:        fixedCount + i,
-                progress:  pos,
-                lane:      1,
-                laneFloat: 1.0,
+                id: 9 + i, progress: pos, lane: 1, laneFloat: 1.0,
                 lanePhase: i * 1.55 + Math.random() * 0.9,
                 laneSpeed: 0.65 + Math.random() * 0.55,
-                type:      'slider',
+                type: 'haycart',
             });
         }
 
@@ -285,7 +282,7 @@ class RaceManager {
 
         // ── Slider-Positionen aktualisieren ───────────────────────────────────
         for (const obs of this.obstacles) {
-            if (obs.type === 'slider') {
+            if (obs.type === 'haycart') {
                 obs.laneFloat = 1 + Math.sin(this._raceTime * obs.laneSpeed + obs.lanePhase); // 0..2
                 obs.lane      = Math.round(obs.laneFloat);
             }
@@ -315,6 +312,7 @@ class RaceManager {
             let   effectiveMax  = (!h.exhausted && h.turboTimer > 0) ? h.maxSpeed * 1.4 : baseMax;
             // Blitz-Betäubung: Maximalgeschwindigkeit hart begrenzt
             if (h.blitzStunTimer > 0) effectiveMax = Math.min(effectiveMax, h.maxSpeed * 0.42);
+
 
             // Windschatten: eng hinter einem anderen Pferd in gleicher Spur (enger Bereich)
             h.slipstream = false;
@@ -403,22 +401,27 @@ class RaceManager {
                 }
             }
 
-            // Kollision mit Hindernissen (Kegel, Hürden, Slider)
-            if (h.penaltyTimer <= 0 && h._blockCooldown <= 0) {
+            // Kollision mit Hindernissen
+            if (h._blockCooldown <= 0) {
                 for (const obs of this.obstacles) {
                     if (Math.abs(h.progress - obs.progress) > 7) continue;
                     const laneHit = obs.lane === -1 || obs.lane === h.lane;
-                    if (laneHit && h.jumpHeight < 1.0) {
-                        if (h.shieldActive) {
-                            h.shieldActive   = false;
-                            h._blockCooldown = 1.5;
-                        } else {
-                            h.speed         *= 0.35;
-                            h.penaltyTimer   = 1.5;
-                            h._blockCooldown = 2.0;
-                        }
-                        break;
+                    if (!laneHit) continue;
+
+                    // ── Sprung (>= 1.0) schützt vor allen Hindernissen ──
+                    if (h.jumpHeight >= 1.0) continue;
+
+                    if (h.penaltyTimer > 0) continue;   // schon bestraft
+
+                    if (h.shieldActive) {
+                        h.shieldActive   = false;
+                        h._blockCooldown = 1.5;
+                    } else {
+                        h.speed         *= 0.35;
+                        h.penaltyTimer   = 1.5;
+                        h._blockCooldown = 2.0;
                     }
+                    break;
                 }
             }
 

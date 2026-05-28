@@ -14,6 +14,8 @@ const Renderer = (() => {
     const powerupMeshes  = {};
     let _playerId        = null;
     let _finishBanner    = null;
+    let _shakeEnd        = 0;
+    let _shakeIntensity  = 0;
     const _flagMeshes    = [];
     const _spectators    = [];       // { body, baseY, z }
     const _waves         = [];       // { z0, dir, startTime }
@@ -265,8 +267,8 @@ const Renderer = (() => {
         blitzPs.color1          = new BABYLON.Color4(1.0, 1.0, 0.1, 1.0);
         blitzPs.color2          = new BABYLON.Color4(1.0, 0.55, 0.0, 0.9);
         blitzPs.colorDead       = new BABYLON.Color4(0.8, 0.7, 0.0, 0.0);
-        blitzPs.minSize         = 0.10;  blitzPs.maxSize      = 0.42;
-        blitzPs.minLifeTime     = 0.15;  blitzPs.maxLifeTime  = 0.55;
+        blitzPs.minSize         = 0.18;  blitzPs.maxSize      = 0.70;
+        blitzPs.minLifeTime     = 0.20;  blitzPs.maxLifeTime  = 0.70;
         blitzPs.emitRate        = 0;
         blitzPs.direction1      = new BABYLON.Vector3(-8,  4, -8);
         blitzPs.direction2      = new BABYLON.Vector3( 8, 14,  8);
@@ -847,11 +849,15 @@ const Renderer = (() => {
                 // Windschatten-Partikel (cyan, kontinuierlich wenn in Slipstream)
                 if (h.slipPs) h.slipPs.emitRate = h.slipstream ? 35 : 0;
 
-                // Blitz-Stun-Funken (Burst auf steigende Flanke)
+                // Blitz-Stun-Funken (großer Burst + Dauerfunken solange betäubt)
                 if (h.blitzPs) {
                     if (h.blitzStunned && !h._wasBlitzStunned) {
-                        h.blitzPs.emitRate = 140;
-                        setTimeout(() => { if (h.blitzPs) h.blitzPs.emitRate = 0; }, 700);
+                        // Steigende Flanke: kräftiger Burst
+                        h.blitzPs.emitRate = 320;
+                        setTimeout(() => { if (h.blitzPs) h.blitzPs.emitRate = h.blitzStunned ? 28 : 0; }, 1000);
+                    } else if (!h.blitzStunned && h._wasBlitzStunned) {
+                        // Fallende Flanke: Partikel stoppen
+                        h.blitzPs.emitRate = 0;
                     }
                     h._wasBlitzStunned = h.blitzStunned;
                 }
@@ -869,6 +875,16 @@ const Renderer = (() => {
                         followCam.position = BABYLON.Vector3.Lerp(followCam.position, targetCamPos, 0.07);
                         const lookAt = posY.add(fwd.scale(8)).add(new BABYLON.Vector3(0, 1, 0));
                         followCam.setTarget(BABYLON.Vector3.Lerp(followCam.target, lookAt, 0.1));
+
+                        // Kamera-Shake nach Blitz-Treffer
+                        if (performance.now() < _shakeEnd) {
+                            const decay = (_shakeEnd - performance.now()) / 500;
+                            followCam.position.addInPlace(new BABYLON.Vector3(
+                                (Math.random() - 0.5) * _shakeIntensity * decay,
+                                (Math.random() - 0.5) * _shakeIntensity * 0.35 * decay,
+                                0
+                            ));
+                        }
                     }
                 }
             }
@@ -1101,59 +1117,107 @@ const Renderer = (() => {
         if (!list || list.length === 0) return;
         for (const obs of list) {
 
-            // ── Schiebebande (bewegt sich seitlich) ──────────────────────────
-            if (obs.type === 'slider') {
+            // ── Heuwagen (bewegt sich seitlich, ersetzt Schiebebande) ──────────
+            if (obs.type === 'haycart') {
                 const laneIdx = obs.laneFloat !== undefined ? obs.laneFloat : obs.lane;
                 const laneOff = -3.5 + Math.max(0, Math.min(2, laneIdx)) * 3.5;
                 const pos     = trackPosition(obs.progress, laneOff);
 
                 if (obstacleMeshes[obs.id]) {
-                    // Position jedes Frame aktualisieren
                     obstacleMeshes[obs.id].position.x = pos.x;
                     obstacleMeshes[obs.id].position.z = pos.z;
                 } else {
-                    // Einmalig erstellen: Orientierung aus der Streckenmitte
                     const cNxt = trackPosition(obs.progress + 5, 0);
-                    const mesh = BABYLON.MeshBuilder.CreateBox('obs'+obs.id,
-                        { width: 4.6, height: 2.3, depth: 0.55 }, scene);
-                    mesh.position = new BABYLON.Vector3(pos.x, 1.4, pos.z);
-                    mesh.lookAt(new BABYLON.Vector3(cNxt.x, 1.4, cNxt.z));
-                    const m = new BABYLON.StandardMaterial('obsm'+obs.id, scene);
-                    m.diffuseColor  = new BABYLON.Color3(1.0, 0.28, 0.0);
-                    m.emissiveColor = new BABYLON.Color3(0.30, 0.06, 0.0);
-                    mesh.material   = m;
-                    mesh.receiveShadows = true;
-                    if (_shadowGen) _shadowGen.addShadowCaster(mesh);
-                    obstacleMeshes[obs.id] = mesh;
+                    const root = new BABYLON.TransformNode('obs'+obs.id, scene);
+                    root.position = new BABYLON.Vector3(pos.x, 0, pos.z);
+                    // Wagengestell (Holz)
+                    const body = BABYLON.MeshBuilder.CreateBox('cbody'+obs.id, { width: 3.4, height: 0.55, depth: 2.0 }, scene);
+                    body.position.y = 0.45;
+                    body.material   = mat(scene, new BABYLON.Color3(0.58, 0.36, 0.13));
+                    body.parent     = root;
+                    // Strohballen obenauf
+                    const hay = BABYLON.MeshBuilder.CreateBox('chay'+obs.id, { width: 2.8, height: 1.85, depth: 1.5 }, scene);
+                    hay.position.y = 1.65;
+                    hay.material   = mat(scene, new BABYLON.Color3(0.90, 0.72, 0.12));
+                    hay.parent     = root;
+                    // Querholz links/rechts
+                    [-1.55, 1.55].forEach((x, i) => {
+                        const plank = BABYLON.MeshBuilder.CreateBox('cplk'+i+'_'+obs.id, { width: 0.14, height: 1.4, depth: 1.9 }, scene);
+                        plank.position = new BABYLON.Vector3(x, 0.95, 0);
+                        plank.material = mat(scene, new BABYLON.Color3(0.50, 0.30, 0.10));
+                        plank.parent   = root;
+                    });
+                    root.lookAt(new BABYLON.Vector3(cNxt.x, 0, cNxt.z));
+                    root.getChildMeshes().forEach(m => { m.receiveShadows = true; if (_shadowGen) _shadowGen.addShadowCaster(m); });
+                    obstacleMeshes[obs.id] = root;
                 }
                 continue;
             }
 
-            // ── Statische Hindernisse (Kegel, Hürde) ─────────────────────────
+            // ── Statische Hindernisse ─────────────────────────────────────────
             if (obstacleMeshes[obs.id]) continue;
             const laneOff = obs.lane === -1 ? 0 : LANE_OFFSETS[obs.lane];
             const pos     = trackPosition(obs.progress, laneOff);
             const nxt     = trackPosition(obs.progress + 5, laneOff);
 
-            let mesh;
-            if (obs.type === 'hurdle') {
-                mesh = BABYLON.MeshBuilder.CreateBox('obs'+obs.id, {width:11,height:1.8,depth:0.5}, scene);
-                mesh.material = mat(scene, new BABYLON.Color3(1, 0.15, 0.15));
-            } else {
-                mesh = BABYLON.MeshBuilder.CreateCylinder('obs'+obs.id,
-                    {diameterTop:0, diameterBottom:1.3, height:1.8, tessellation:8}, scene);
-                mesh.material = mat(scene, new BABYLON.Color3(1, 0.55, 0.05));
+            // ── 🌾 Heuballen (einzelne Spur, überspringen oder ausweichen) ────
+            if (obs.type === 'haybale') {
+                const root = new BABYLON.TransformNode('obs'+obs.id, scene);
+                root.position = new BABYLON.Vector3(pos.x, 0, pos.z);
+                // Runder Strohballen liegend
+                const bale = BABYLON.MeshBuilder.CreateCylinder('bale'+obs.id,
+                    { diameter: 1.85, height: 1.75, tessellation: 14 }, scene);
+                bale.rotation.z = Math.PI / 2;
+                bale.position.y = 0.9;
+                bale.material   = mat(scene, new BABYLON.Color3(0.88, 0.68, 0.10));
+                bale.parent     = root;
+                // Bindeband (Torus)
+                const twine = BABYLON.MeshBuilder.CreateTorus('twn'+obs.id,
+                    { diameter: 1.88, thickness: 0.10, tessellation: 24 }, scene);
+                twine.rotation.y = Math.PI / 2;
+                twine.position.y = 0.9;
+                twine.material   = mat(scene, new BABYLON.Color3(0.45, 0.28, 0.06));
+                twine.parent     = root;
+                root.lookAt(new BABYLON.Vector3(nxt.x, 0, nxt.z));
+                root.getChildMeshes().forEach(m => { m.receiveShadows = true; if (_shadowGen) _shadowGen.addShadowCaster(m); });
+                obstacleMeshes[obs.id] = root;
+                continue;
             }
-            mesh.position = new BABYLON.Vector3(pos.x, 1.2, pos.z);
-            mesh.lookAt(new BABYLON.Vector3(nxt.x, 1.2, nxt.z));
-            mesh.receiveShadows = true;
-            if (_shadowGen) _shadowGen.addShadowCaster(mesh);
-            obstacleMeshes[obs.id] = mesh;
+
+
+            // ── 🏇 Holzzaun (alle Spuren, Sprung nötig) ─────────────────────
+            if (obs.type === 'fence') {
+                const root = new BABYLON.TransformNode('obs'+obs.id, scene);
+                root.position = new BABYLON.Vector3(pos.x, 0, pos.z);
+                // Zaunpfosten
+                [-4.8, 4.8].forEach((x, i) => {
+                    const post = BABYLON.MeshBuilder.CreateCylinder('post'+i+'_'+obs.id,
+                        { diameter: 0.28, height: 3.2, tessellation: 7 }, scene);
+                    post.position = new BABYLON.Vector3(x, 1.6, 0);
+                    post.material = mat(scene, new BABYLON.Color3(0.62, 0.40, 0.16));
+                    post.parent   = root;
+                });
+                // Querlatten
+                [0.75, 1.75].forEach((y, i) => {
+                    const rail = BABYLON.MeshBuilder.CreateBox('rail'+i+'_'+obs.id,
+                        { width: 10.5, height: 0.22, depth: 0.22 }, scene);
+                    rail.position = new BABYLON.Vector3(0, y, 0);
+                    rail.material = mat(scene, new BABYLON.Color3(0.80, 0.52, 0.20));
+                    rail.parent   = root;
+                });
+                root.lookAt(new BABYLON.Vector3(nxt.x, 0, nxt.z));
+                root.getChildMeshes().forEach(m => { m.receiveShadows = true; if (_shadowGen) _shadowGen.addShadowCaster(m); });
+                obstacleMeshes[obs.id] = root;
+                continue;
+            }
         }
     }
 
     function clearObstacles() {
-        for (const m of Object.values(obstacleMeshes)) m.dispose();
+        for (const m of Object.values(obstacleMeshes)) {
+            if (m.getChildMeshes) m.getChildMeshes().forEach(c => c.dispose());
+            m.dispose();
+        }
         Object.keys(obstacleMeshes).forEach(k => delete obstacleMeshes[k]);
     }
 
@@ -1392,6 +1456,11 @@ const Renderer = (() => {
         });
     }
 
+    function triggerBlitzFlash() {
+        _shakeEnd       = performance.now() + 500;
+        _shakeIntensity = 1.4;
+    }
+
     function resetVictoryCamera() {
         if (!_victoryMode) return;
         _victoryMode = false;
@@ -1408,5 +1477,6 @@ const Renderer = (() => {
              updateHorse, updateObstacles, clearObstacles,
              updatePowerups, clearPowerups,
              triggerFinishConfetti, triggerVictoryCamera, resetVictoryCamera,
+             triggerBlitzFlash,
              removeHorse };
 })();

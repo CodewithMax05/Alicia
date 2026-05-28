@@ -4,6 +4,17 @@
 body { background: #0d1117; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
 #renderCanvas { width: 100vw; height: 100vh; display: block; touch-action: none; }
 
+/* ── Blitz Screen-Flash ── */
+#screenFlash {
+    position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+    background: rgba(255, 235, 0, 0);
+    transition: background 0.05s ease-out;
+}
+#screenFlash.active {
+    background: rgba(255, 235, 0, 0.52);
+    transition: background 0s;
+}
+
 /* ── Gemeinsames Panel-Styling ── */
 .hud-panel {
     background: rgba(5, 8, 18, 0.86);

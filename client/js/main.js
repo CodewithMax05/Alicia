@@ -242,7 +242,15 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
             if (h.shieldActive && !prevShieldActive)          Audio.playPowerup('shield');
             if (h.stamina > prevStamina + 30)                 Audio.playPowerup('stamina');
             // Blitz-Treffer
-            if (h.blitzStunTimer > 0 && !prevBlitzStunned)   Audio.playHit();
+            if (h.blitzStunTimer > 0 && !prevBlitzStunned) {
+                Audio.playHit();
+                Renderer.triggerBlitzFlash();
+                const flashEl = document.getElementById('screenFlash');
+                if (flashEl) {
+                    flashEl.classList.add('active');
+                    setTimeout(() => flashEl.classList.remove('active'), 90);
+                }
+            }
             // Erschöpfung einsetzt
             if (h.exhausted && !prevExhausted)                Audio.playExhausted();
 
