@@ -1,0 +1,190 @@
+/* ── Reset & Base ── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+body { background: #0d1117; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+#renderCanvas { width: 100vw; height: 100vh; display: block; touch-action: none; }
+
+/* ── Gemeinsames Panel-Styling ── */
+.hud-panel {
+    background: rgba(5, 8, 18, 0.86);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 14px;
+    backdrop-filter: blur(20px) saturate(1.4);
+    box-shadow: 0 4px 28px rgba(0,0,0,0.6),
+                inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+/* ── Info-Box links oben ── */
+#ui {
+    position: absolute; top: 16px; left: 16px;
+    color: #d8d8e8; font-size: 13px;
+    padding: 14px 16px 12px;
+    min-width: 200px; line-height: 1;
+    display: flex; flex-direction: column;
+    /* hud-panel-Werte inline wiederholen für Eigenständigkeit */
+    background: rgba(5, 8, 18, 0.86);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 14px;
+    backdrop-filter: blur(20px) saturate(1.4);
+    box-shadow: 0 4px 28px rgba(0,0,0,0.6),
+                inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+#ui h2 {
+    font-size: 12px; color: #ffd700; font-weight: 800;
+    letter-spacing: 1.2px; text-transform: uppercase;
+    padding-bottom: 10px; margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+
+#status {
+    font-size: 11px; color: #556; margin-bottom: 12px;
+    letter-spacing: 0.3px;
+}
+#status[style*="4caf50"] { color: #5c9 !important; }  /* Verbunden → grün */
+#status[style*="f44336"] { color: #e55 !important; }  /* Getrennt → rot */
+
+/* Speed */
+#speed {
+    font-size: 24px; font-weight: 700; color: #fff;
+    letter-spacing: -0.5px; line-height: 1;
+    margin-bottom: 12px;
+}
+
+/* Stamina-Bereich */
+#stamLabel {
+    font-size: 10px; color: #667; text-transform: uppercase;
+    letter-spacing: 0.9px; margin-bottom: 5px;
+}
+.bar-wrap {
+    background: rgba(255,255,255,0.07);
+    border-radius: 5px; height: 5px;
+    margin-bottom: 14px;
+    overflow: hidden;
+}
+.bar {
+    height: 5px; border-radius: 5px;
+    transition: width 0.12s ease, background 0.35s ease;
+    background: #4caf50;
+}
+
+/* Kamera-Modus */
+#camMode {
+    font-size: 11px; color: #5577aa;
+    margin-bottom: 8px; letter-spacing: 0.2px;
+}
+
+/* Buff-Zeile */
+#buffs {
+    min-height: 16px; font-size: 12px;
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+/* Tastatur-Hinweise */
+.hint {
+    font-size: 10px; color: #334; line-height: 1.75;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+}
+.hint kbd {
+    display: inline-block;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 3px;
+    padding: 0 4px; font-size: 9px;
+    font-family: inherit; color: #99aacc;
+    vertical-align: middle; line-height: 1.6;
+}
+
+/* ── Platzierung rechts oben ── */
+#ranking {
+    position: absolute; top: 16px; right: 16px;
+    color: #d8d8e8; font-size: 13px;
+    padding: 12px 16px;
+    min-width: 160px; display: none;
+    background: rgba(5, 8, 18, 0.86);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 14px;
+    backdrop-filter: blur(20px) saturate(1.4);
+    box-shadow: 0 4px 28px rgba(0,0,0,0.6),
+                inset 0 1px 0 rgba(255,255,255,0.06);
+}
+#ranking h3 {
+    font-size: 10px; color: #446; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px;
+    margin-bottom: 9px; padding-bottom: 7px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.rank-entry {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 0; font-size: 13px; color: #aab;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.rank-entry:last-child { border-bottom: none; }
+.rank-entry.me  { color: #ffd700; font-weight: 700; }
+.rank-pos  { font-size: 14px; width: 26px; flex-shrink: 0; }
+.rank-icon { font-size: 13px; flex-shrink: 0; }
+.rank-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
+
+/* ── Minimap ── */
+#minimap {
+    position: absolute; bottom: 16px; right: 16px;
+    border-radius: 10px; pointer-events: none; display: none;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.6);
+    border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* ── Wetter-Toast ── */
+#weatherToast {
+    position: absolute; top: 70px; left: 50%;
+    transform: translateX(-50%) translateY(-16px);
+    background: rgba(0,0,0,0.75); color: #fff; font-size: 15px; font-weight: bold;
+    padding: 8px 22px; border-radius: 24px; pointer-events: none;
+    backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.12);
+    opacity: 0; transition: opacity 0.4s ease, transform 0.4s ease;
+    white-space: nowrap;
+}
+#weatherToast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── Runden-Anzeige oben Mitte ── */
+#lapDisplay {
+    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+    color: #fff; font-size: 18px; font-weight: bold;
+    background: rgba(0,0,0,0.6);
+    padding: 8px 20px; border-radius: 20px;
+    backdrop-filter: blur(4px);
+    display: none;
+}
+
+/* ── Rundenzeit-Split ── */
+#lapSplit {
+    position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.7); color: #ffd700; font-size: 16px; font-weight: bold;
+    padding: 6px 20px; border-radius: 12px; display: none; pointer-events: none;
+}
+
+/* ── Countdown Overlay ── */
+#countdown {
+    position: absolute; inset: 0;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.45);
+}
+#countdownNumber {
+    font-size: 140px; font-weight: 900; color: #fff;
+    text-shadow: 0 0 40px rgba(255,200,0,0.9), 0 4px 8px rgba(0,0,0,0.8);
+    animation: pop 0.6s ease-out;
+    user-select: none;
+}
+#countdownNumber.go { color: #4cff80; font-size: 100px; }
+
+/* ── Geteilte Animationen (auch von Lobby & Ergebnis genutzt) ── */
+@keyframes pop {
+    0%   { transform: scale(2.5); opacity: 0; }
+    60%  { transform: scale(0.9); opacity: 1; }
+    100% { transform: scale(1);   opacity: 1; }
+}
+@keyframes overlayIn {
+    from { opacity: 0; transform: translateY(28px); }
+    to   { opacity: 1; transform: translateY(0); }
+}

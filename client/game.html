@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Alicia Online – Rennen</title>
+    <link rel="stylesheet" href="css/hud.css">
+    <link rel="stylesheet" href="css/lobby.css">
+    <link rel="stylesheet" href="css/results.css">
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+
+    <!-- ── Lobby-Browser ──────────────────────────────────────────────────── -->
+    <div id="lobbyBrowser">
+        <div id="lobbyBrowserBox">
+            <div id="lbTitle">🏇 ALICIA ONLINE</div>
+            <div id="lbSubtitle">Wähle eine Lobby oder erstelle deine eigene</div>
+
+            <!-- Fehler-Banner -->
+            <div id="lobbyBrowserError" style="display:none;"></div>
+
+            <!-- Öffentliche Lobbys -->
+            <div id="lbSection">
+                <div class="lb-section-head">
+                    <span>Öffentliche Lobbys</span>
+                    <span id="lbRefreshHint">wird alle 4 s aktualisiert</span>
+                </div>
+                <div id="lobbyList"><div class="lb-empty">Suche nach Lobbys…</div></div>
+            </div>
+
+            <!-- Eigene Lobby erstellen -->
+            <div id="lbCreate">
+                <div class="lb-section-head"><span>Neue Lobby erstellen</span></div>
+                <div id="lbCreateRow">
+                    <input id="newLobbyName" type="text" maxlength="28" placeholder="Lobby-Name (optional)"
+                        onkeydown="event.stopPropagation(); if(event.key==='Enter') createLobby();">
+                    <label class="lb-pub-label">
+                        <input type="checkbox" id="newLobbyPublic" checked>
+                        öffentlich
+                    </label>
+                    <button id="lbCreateBtn" onclick="createLobby()">➕ Erstellen</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Lobby-Panel ─────────────────────────────────────────────────────── -->
+    <div id="lobbyPanel">
+        <div id="lobbyBox">
+            <div id="lobbyTitle">🏇 ALICIA ONLINE — LOBBY</div>
+            <div id="lobbySubtitle">
+                <span id="lobbyReadyCount">0/0 bereit</span>
+                &nbsp;— Alle müssen bereit sein um zu starten
+            </div>
+
+            <div id="lobbyMain">
+                <div id="lobbyPlayers">
+                    <h3>👥 Spieler</h3>
+                    <div id="lobbyPlayerList"></div>
+                </div>
+                <div id="lobbyChat">
+                    <h3>💬 Chat</h3>
+                    <div id="chatMessages"></div>
+                    <div id="chatInputRow">
+                        <input id="chatInput" type="text" maxlength="80" placeholder="Nachricht eingeben..."
+                            onkeydown="event.stopPropagation(); if(event.key==='Enter') sendChatMsg();">
+                        <button id="chatSendBtn" onclick="sendChatMsg()">➤</button>
+                    </div>
+                </div>
+            </div>
+
+            <button id="lobbyReadyBtn" onclick="toggleLobbyReady()">✓ Ich bin bereit!</button>
+        </div>
+    </div>
+
+    <!-- ── Info-HUD links oben ─────────────────────────────────────────────── -->
+    <div id="ui">
+        <h2>Alicia Online</h2>
+        <div id="status">Verbinde…</div>
+        <div id="speed">⚡ 0</div>
+        <div id="stamLabel">Stamina</div>
+        <div class="bar-wrap"><div class="bar" id="stamBar" style="width:100%"></div></div>
+        <div id="camMode">📷 Third-Person</div>
+        <div id="buffs"></div>
+        <div class="hint">
+            <kbd>Leertaste</kbd> beschleunigen<br>
+            <kbd>← →</kbd> Spur wechseln<br>
+            <kbd>W</kbd> / <kbd>↑</kbd> springen<br>
+            <kbd>Tab</kbd> Kamera &nbsp;·&nbsp; <kbd>Maus</kbd> drehen
+        </div>
+    </div>
+
+    <!-- ── Minimap ─────────────────────────────────────────────────────────── -->
+    <canvas id="minimap"></canvas>
+
+    <!-- ── Wetter-Toast ────────────────────────────────────────────────────── -->
+    <div id="weatherToast"></div>
+
+    <!-- ── Runden-Anzeige + Live-Timer ────────────────────────────────────── -->
+    <div id="lapDisplay">
+        Runde <span id="lapNum">1</span> / 2
+        <div id="lapTimer" style="font-size:14px; color:#ffd700; margin-top:3px;">0:00.0</div>
+    </div>
+
+    <!-- ── Rundenzeit-Split (kurz einblenden) ──────────────────────────────── -->
+    <div id="lapSplit"></div>
+
+    <!-- ── Platzierung ─────────────────────────────────────────────────────── -->
+    <div id="ranking">
+        <h3>Platzierung</h3>
+        <div id="rankList"></div>
+    </div>
+
+    <!-- ── Countdown ───────────────────────────────────────────────────────── -->
+    <div id="countdown">
+        <div id="countdownNumber">3</div>
+    </div>
+
+    <!-- ── Ergebnis-Screen ─────────────────────────────────────────────────── -->
+    <div id="results">
+        <div id="resultsOverlay">
+
+            <div style="text-align:center;">
+                <div id="resultsTitle">🏁 Rennen beendet!</div>
+                <div id="resultsReadyArea">
+                    <button id="resultsReadyBtn" onclick="resultsReady()">▶ Nächste Runde</button>
+                    <span id="resultsReadyCount"></span>
+                </div>
+            </div>
+
+            <div id="recordBadge">🏆 Neuer persönlicher Rekord!</div>
+
+            <!-- Podium -->
+            <div id="podium">
+                <div class="podium-slot" id="pod2">
+                    <div class="pod-avatar">🐴</div>
+                    <div class="pod-name">-</div>
+                    <div class="pod-time">-</div>
+                    <div class="pod-platform p2">🥈</div>
+                </div>
+                <div class="podium-slot" id="pod1">
+                    <div class="pod-avatar">🐴</div>
+                    <div class="pod-name">-</div>
+                    <div class="pod-time">-</div>
+                    <div class="pod-platform p1">🥇</div>
+                </div>
+                <div class="podium-slot" id="pod3">
+                    <div class="pod-avatar">🐴</div>
+                    <div class="pod-name">-</div>
+                    <div class="pod-time">-</div>
+                    <div class="pod-platform p3">🥉</div>
+                </div>
+            </div>
+
+            <!-- Detaillierte Ergebnisliste -->
+            <div id="resultsTable">
+                <div id="resultsList"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ── Scripts ─────────────────────────────────────────────────────────── -->
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/materialsLibrary/babylonjs.materials.min.js"></script>
+    <script src="js/audio.js"></script>
+    <script src="js/renderer.js"></script>
+    <script src="js/network.js"></script>
+    <script src="js/minimap.js"></script>
+    <script src="js/main.js"></script>
+    <script>
+        // Auswahl aus sessionStorage lesen und Spiel starten.
+        // Falls keine Auswahl vorhanden → zurück zur Auswahl-Seite.
+        (function () {
+            const raw = sessionStorage.getItem('alicia_selection');
+            if (!raw) { window.location.replace('index.html'); return; }
+            let sel;
+            try { sel = JSON.parse(raw); } catch { window.location.replace('index.html'); return; }
+            startGame(
+                sel.horseType   || 'blitz',
+                sel.playerName  || 'Fahrer',
+                sel.riderConfig || { face: 0, shirt: 0, pants: 0 }
+            );
+        })();
+    </script>
+</body>
+</html>

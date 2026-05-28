@@ -1,0 +1,214 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   LOBBY BROWSER  (Vorraum — vor dem Beitreten)
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+#lobbyBrowser {
+    position: absolute; inset: 0; z-index: 60;
+    display: none; align-items: center; justify-content: center;
+    background: linear-gradient(155deg, rgba(4,7,18,0.98) 0%, rgba(10,6,26,0.99) 100%);
+    backdrop-filter: blur(10px);
+}
+
+#lobbyBrowserBox {
+    display: flex; flex-direction: column; gap: 20px;
+    max-width: 680px; width: 94%;
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 22px; padding: 36px 30px 30px;
+    animation: overlayIn 0.4s cubic-bezier(0.2,0,0.2,1);
+}
+
+#lbTitle {
+    font-size: 28px; font-weight: 900; color: #ffd700; text-align: center;
+    letter-spacing: 2px; text-shadow: 0 0 36px rgba(255,215,0,0.45);
+}
+#lbSubtitle { font-size: 13px; color: #666; text-align: center; margin-top: -12px; }
+
+/* Fehler-Banner */
+#lobbyBrowserError {
+    background: rgba(220,50,50,0.15); border: 1px solid rgba(220,50,50,0.35);
+    color: #ff7070; border-radius: 8px; padding: 9px 14px; font-size: 13px;
+}
+
+/* Abschnitts-Kopf */
+.lb-section-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1.4px;
+    margin-bottom: 10px;
+}
+#lbRefreshHint { font-size: 10px; color: #383840; font-style: italic; text-transform: none; }
+
+/* Lobby-Liste */
+#lobbyList { display: flex; flex-direction: column; gap: 6px; min-height: 48px; }
+
+.lb-empty {
+    color: #444; font-size: 13px; text-align: center;
+    padding: 18px 0; font-style: italic;
+}
+
+.lb-row {
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px; padding: 10px 14px;
+    transition: border-color .15s, background .15s;
+}
+.lb-row:hover { border-color: rgba(255,215,0,0.18); background: rgba(255,215,0,0.03); }
+
+.lb-name    { flex: 1; font-size: 14px; font-weight: bold; color: #ddd; }
+.lb-players { font-size: 12px; color: #888; min-width: 36px; text-align: center; }
+
+.lb-state {
+    font-size: 11px; font-weight: bold; padding: 3px 9px;
+    border-radius: 20px; min-width: 72px; text-align: center;
+}
+.lb-state-waiting   { background: rgba(100,200,100,0.12); color: #6ec86e; }
+.lb-state-lobby     { background: rgba(100,160,255,0.12); color: #7ab4ff; }
+.lb-state-countdown { background: rgba(255,200,50,0.14);  color: #ffd060; }
+.lb-state-racing    { background: rgba(255,120,50,0.14);  color: #ff8855; }
+.lb-state-results   { background: rgba(160,100,255,0.12); color: #c088ff; }
+
+.lb-join-btn {
+    background: rgba(255,215,0,0.13); color: #ffd700;
+    border: 1px solid rgba(255,215,0,0.3); border-radius: 8px;
+    padding: 6px 16px; font-size: 13px; font-weight: bold;
+    cursor: pointer; transition: background .15s, transform .1s;
+    white-space: nowrap;
+}
+.lb-join-btn:hover:not(:disabled) { background: rgba(255,215,0,0.26); transform: scale(1.04); }
+.lb-join-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* Erstellen-Zeile */
+#lbSection { border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 18px; }
+
+#lbCreateRow {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+#newLobbyName {
+    flex: 1; min-width: 160px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
+    color: #fff; font-size: 13px; padding: 8px 12px; outline: none;
+    font-family: 'Segoe UI', sans-serif;
+    transition: border-color .15s;
+}
+#newLobbyName:focus { border-color: rgba(255,215,0,0.4); }
+
+.lb-pub-label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; color: #888; cursor: pointer; white-space: nowrap;
+}
+.lb-pub-label input[type=checkbox] { accent-color: #ffd700; width: 15px; height: 15px; cursor: pointer; }
+
+#lbCreateBtn {
+    background: #ffd700; color: #111;
+    border: none; border-radius: 8px;
+    padding: 8px 20px; font-size: 13px; font-weight: bold;
+    cursor: pointer; transition: opacity .15s, transform .1s;
+    white-space: nowrap;
+}
+#lbCreateBtn:hover { opacity: 0.88; transform: scale(1.04); }
+
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   IN-LOBBY PANEL  (nach dem Beitreten, vor dem Rennen)
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Lobby-Panel ── */
+#lobbyPanel {
+    position: absolute; inset: 0; z-index: 50;
+    display: none; align-items: center; justify-content: center;
+    background: linear-gradient(160deg, rgba(5,8,20,0.96) 0%, rgba(14,10,32,0.97) 100%);
+    backdrop-filter: blur(8px);
+}
+
+#lobbyBox {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 16px; max-width: 700px; width: 94%;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px; padding: 32px 28px 28px;
+    animation: overlayIn 0.45s cubic-bezier(0.2,0,0.2,1);
+}
+
+#lobbyTitle {
+    font-size: 26px; font-weight: 900; color: #ffd700;
+    letter-spacing: 2px; text-shadow: 0 0 30px rgba(255,215,0,0.4);
+}
+
+#lobbySubtitle      { font-size: 14px; color: #888; }
+#lobbySubtitle span { color: #ccc; font-weight: bold; }
+
+#lobbyMain { display: flex; gap: 18px; width: 100%; }
+
+/* ── Spielerliste ── */
+#lobbyPlayers { flex: 1; min-width: 0; }
+
+#lobbyPlayers h3,
+#lobbyChat h3 {
+    font-size: 11px; color: #666; letter-spacing: 1.5px;
+    text-transform: uppercase; margin-bottom: 10px;
+}
+
+#lobbyPlayerList { display: flex; flex-direction: column; gap: 6px; }
+
+.lobby-player {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 8px; padding: 7px 12px;
+    font-size: 13px; color: #ccc;
+    border: 1px solid transparent;
+    transition: border-color .2s;
+}
+.lobby-player.lobby-me {
+    border-color: rgba(255,215,0,0.2);
+    background: rgba(255,215,0,0.04);
+}
+.lobby-ready-dot { font-size: 10px; flex-shrink: 0; }
+.lobby-pname     { flex: 1; font-weight: bold; }
+.lobby-horse     { font-size: 12px; color: #888; }
+.lobby-status    { font-size: 11px; color: #555; margin-left: 4px; }
+
+/* ── Chat ── */
+#lobbyChat { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+#chatMessages {
+    flex: 1; height: 180px; overflow-y: auto;
+    background: rgba(0,0,0,0.3); border-radius: 8px;
+    padding: 10px 12px; font-size: 12px; color: #aaa;
+    display: flex; flex-direction: column; gap: 4px;
+    border: 1px solid rgba(255,255,255,0.06);
+}
+#chatMessages::-webkit-scrollbar       { width: 4px; }
+#chatMessages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+.chat-msg    { line-height: 1.5; word-break: break-word; }
+.chat-sender { color: #ffd700; font-weight: bold; }
+
+#chatInputRow { display: flex; gap: 8px; margin-top: 8px; }
+
+#chatInput {
+    flex: 1;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
+    color: #fff; font-size: 13px; padding: 7px 12px; outline: none;
+    font-family: 'Segoe UI', sans-serif;
+    transition: border-color .15s;
+}
+#chatInput:focus { border-color: rgba(255,215,0,0.4); }
+
+#chatSendBtn {
+    background: rgba(255,215,0,0.15); border: 1px solid rgba(255,215,0,0.3);
+    color: #ffd700; border-radius: 8px; padding: 7px 14px;
+    cursor: pointer; font-size: 14px; transition: background .15s;
+}
+#chatSendBtn:hover { background: rgba(255,215,0,0.28); }
+
+/* ── Bereit-Button ── */
+#lobbyReadyBtn {
+    padding: 12px 48px; font-size: 15px; font-weight: bold;
+    background: rgba(255,215,0,0.12); color: #ffd700;
+    border: 2px solid rgba(255,215,0,0.35); border-radius: 30px;
+    cursor: pointer; letter-spacing: 0.5px;
+    transition: background .2s, transform .1s, border-color .2s;
+}
+#lobbyReadyBtn:hover { background: rgba(255,215,0,0.22); transform: scale(1.03); }

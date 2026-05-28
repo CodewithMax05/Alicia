@@ -1,0 +1,114 @@
+/* ── Ergebnis-Screen ── */
+#results {
+    position: absolute; inset: 0;
+    display: none; align-items: center; justify-content: center;
+    background: linear-gradient(160deg, rgba(5,8,20,0.97) 0%, rgba(18,12,40,0.98) 100%);
+    backdrop-filter: blur(10px); overflow-y: auto;
+}
+
+#resultsOverlay {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 18px; max-width: 660px; width: 94%;
+    padding: 32px 16px 40px;
+    animation: overlayIn 0.55s cubic-bezier(0.2,0,0.2,1);
+}
+
+#resultsTitle {
+    font-size: 36px; font-weight: 900; color: #ffd700; text-align: center;
+    text-shadow: 0 0 40px rgba(255,215,0,0.55); letter-spacing: 2px;
+}
+
+#resultsReadyArea {
+    display: flex; align-items: center; justify-content: center;
+    gap: 14px; margin-top: 10px; flex-wrap: wrap;
+}
+#resultsReadyBtn {
+    padding: 10px 36px; font-size: 14px; font-weight: bold;
+    background: rgba(255,215,0,0.13); color: #ffd700;
+    border: 2px solid rgba(255,215,0,0.35); border-radius: 30px;
+    cursor: pointer; letter-spacing: 0.5px;
+    transition: background .2s, transform .1s, border-color .2s;
+}
+#resultsReadyBtn:hover { background: rgba(255,215,0,0.24); transform: scale(1.04); }
+#resultsReadyCount { font-size: 13px; color: #666; min-width: 70px; }
+
+/* ── Podium ── */
+#podium { display: flex; align-items: flex-end; justify-content: center; gap: 6px; width: 100%; }
+
+.podium-slot {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 3px; flex: 1; max-width: 170px;
+}
+.pod-avatar { font-size: 30px; line-height: 1; transition: transform 0.3s; }
+.pod-name {
+    font-size: 13px; font-weight: bold; color: #ddd;
+    max-width: 150px; text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pod-name.is-me { color: #ffd700; }
+.pod-time       { font-size: 11px; color: #777; margin-bottom: 3px; }
+
+.pod-platform {
+    border-radius: 10px 10px 0 0; width: 100%;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding-top: 10px; font-size: 28px;
+    animation: riseUp 0.65s cubic-bezier(0.2,0,0.1,1) both;
+    transform-origin: bottom;
+}
+.pod-platform.p1 {
+    height: 120px;
+    background: linear-gradient(180deg, #ffc107 0%, #9a6c00 100%);
+    box-shadow: 0 -6px 24px rgba(255,215,0,0.3);
+    animation-delay: 0.5s;
+}
+.pod-platform.p2 {
+    height: 84px;
+    background: linear-gradient(180deg, #a0a0b4 0%, #555568 100%);
+    animation-delay: 0.25s;
+}
+.pod-platform.p3 {
+    height: 58px;
+    background: linear-gradient(180deg, #cd7f32 0%, #7a460e 100%);
+    animation-delay: 0.05s;
+}
+@keyframes riseUp {
+    from { transform: scaleY(0); }
+    to   { transform: scaleY(1); }
+}
+
+/* ── Ergebnis-Tabelle ── */
+#resultsTable {
+    width: 100%; background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px; overflow: hidden;
+}
+.result-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 18px; color: #ccc; font-size: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    animation: fadeRowIn 0.35s ease-out both;
+}
+.result-row:last-child { border-bottom: none; }
+.result-row.winner { color: #ffd700; background: rgba(255,215,0,0.06); }
+.result-row.is-me  { background: rgba(255,215,0,0.03); outline: 1px solid rgba(255,215,0,0.12); }
+@keyframes fadeRowIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+.rr-medal { font-size: 20px; width: 28px; flex-shrink: 0; text-align: center; }
+.rr-name  { flex: 1; font-weight: bold; }
+.rr-laps  { font-size: 11px; color: #555; display: flex; gap: 10px; }
+.rr-total { font-size: 15px; font-weight: bold; color: #fff; margin-left: 6px; }
+
+/* ── Persönlicher Rekord ── */
+#recordBadge {
+    display: none;
+    background: linear-gradient(135deg, #ffd700, #ff8c00);
+    color: #111; font-weight: 900; padding: 8px 28px;
+    border-radius: 30px; font-size: 15px; letter-spacing: 0.5px;
+    animation: recordPulse 1.8s ease-in-out infinite;
+}
+@keyframes recordPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,180,0,0.5); }
+    50%       { box-shadow: 0 0 0 14px rgba(255,180,0,0); }
+}
