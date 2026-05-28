@@ -127,8 +127,8 @@ const Audio = (() => {
 
     function playHoof() {
         const t = getCtx().currentTime;
-        noiseShot(t,       0.04, 300, 0.18);   // dumpfer Aufprall
-        noiseShot(t + 0.04,0.03, 600, 0.08);   // kurzes Nachklingen
+        noiseShot(t,       0.04, 300, 0.30);   // dumpfer Aufprall
+        noiseShot(t + 0.04,0.03, 600, 0.13);   // kurzes Nachklingen
     }
 
     function playJump() {
@@ -160,7 +160,7 @@ const Audio = (() => {
         [523, 659, 784, 1047].forEach((f, i) => {
             osc(f, 'square', t + i * 0.07, 0.18, 0.35);
         });
-        _playHorse(1.25, 0.75);   // aufgeregtes Wiehern beim Start
+        _playHorse(1.25, 1.20);   // aufgeregtes Wiehern beim Start
     }
 
     function playPowerup(type) {
@@ -198,7 +198,7 @@ const Audio = (() => {
     }
 
     function playExhausted() {
-        _playHorse(0.68, 0.95);   // erschöpftes Wiehern (langsam = tief + müde)
+        _playHorse(0.68, 1.20);   // erschöpftes Wiehern (langsam = tief + müde)
     }
 
     // Kein Jubel-Sound — nur eigene Datei wenn vorhanden (client/sounds/pass.mp3)
@@ -206,7 +206,7 @@ const Audio = (() => {
     function playCrowdPass()  { _playBuffer('pass', 0.7); }
 
     // Erschrockenes Wiehern (z.B. Blitz-Treffer) — schnell = hoch = erschrocken
-    function playHorseScared() { _playHorse(1.55, 0.80); }
+    function playHorseScared() { _playHorse(1.55, 1.20); }
 
     function playFinish(position) {
         const t = getCtx().currentTime;
@@ -254,15 +254,14 @@ const Audio = (() => {
     // Stil: ruhige keltisch/folk-angehauchte Begleitung, 96 BPM, C–Am–F–G
 
     const _BG_LOOKAHEAD = 0.12;               // Sekunden vorausplanen
-    const _BG_STEP_DUR  = (60 / 96) / 2;     // Achtelnote bei 96 BPM ≈ 0.3125 s
+    const _BG_STEP_DUR  = (60 / 72) / 2;     // Achtelnote bei 72 BPM ≈ 0.417 s (ruhig)
 
     // 16-Schritt-Sequenz (Achtelnoten). 0 = Pause
-    const BG_MEL1   = [784, 0, 880, 784, 659,  0, 784, 659, 587,  0, 659, 587, 523,  0, 659, 784];
-    const BG_MEL2   = [523, 0, 659, 523, 440,  0, 523, 440, 392,  0, 440, 392, 330,  0, 440, 523];
-    const BG_BASS   = [131, 0, 165,   0, 220,  0, 131,   0, 175,  0, 220,   0, 196,  0, 175,   0];
-    // Zupf-Arpeggio auf Offbeats (kurze Töne, gitarrenartig)
-    const BG_ARP    = [  0, 392, 0, 330,  0, 262,  0, 294,  0, 440,  0, 330,  0, 294,  0, 392];
-    // Akkord-Pads (I–vi–IV–V): C–Am–F–G
+    // Sparsame Melodie — viele Pausen, wenige Noten (Fahrstuhl-Stil)
+    const BG_MEL    = [659,  0,  0,  0, 784,  0,  0, 659, 523,  0,  0,  0, 587,  0, 523,  0];
+    // Bass — nur Grundton, bewegt sich kaum
+    const BG_BASS   = [131,  0,  0,  0, 110,  0,  0,   0, 175,  0,  0,  0, 196,  0,   0,  0];
+    // Sanfte Akkord-Pads: C – Am – F – G (Sinus, lang überlappend)
     const BG_CHORDS = [
         [262, 330, 392],  // C-Dur  (Schritt  0)
         [220, 262, 330],  // Am     (Schritt  4)
@@ -275,29 +274,16 @@ const Audio = (() => {
     function _scheduleBgStep(t, step) {
         const s = step % 16;
 
-        // Melodie Stimme 1 (Dreieck, Flöten-artig)
-        if (BG_MEL1[s] > 0) osc(BG_MEL1[s], 'triangle', t, 0.32, 0.040);
-        // Melodie Stimme 2 (Terz tiefer, leiser — erzeugt Tiefe)
-        if (BG_MEL2[s] > 0) osc(BG_MEL2[s], 'triangle', t, 0.32, 0.024);
+        // Melodie (Sinus, sehr weich, lange Sustain)
+        if (BG_MEL[s] > 0) osc(BG_MEL[s], 'sine', t, 0.55, 0.018);
 
-        // Gehender Bass (Sinus, warm)
-        if (BG_BASS[s] > 0) osc(BG_BASS[s], 'sine', t, 0.34, 0.056);
+        // Bass (Sinus, dezent)
+        if (BG_BASS[s] > 0) osc(BG_BASS[s], 'sine', t, 0.42, 0.022);
 
-        // Zupf-Arpeggio auf Offbeats (kurze Töne = Pizzicato-Charakter)
-        if (BG_ARP[s]  > 0) osc(BG_ARP[s],  'triangle', t, 0.10, 0.027);
-
-        // Akkord-Pad auf den vier Hauptschlägen (lang ausklingend)
+        // Akkord-Pads — Töne leicht versetzt einspielen (weicher Wash-Effekt)
         const ci = [0, 4, 8, 12].indexOf(s);
-        if (ci >= 0) BG_CHORDS[ci].forEach(f => osc(f, 'triangle', t, 0.40, 0.024));
-
-        // Sanfter Kick nur auf Beat 1 + 3 (Schritte 0 und 8)
-        if (s === 0 || s === 8) {
-            noiseShot(t, 0.048, 100, 0.052);
-            osc(55, 'sine', t, 0.065, 0.075);
-        }
-
-        // Dezentes Hi-Hat nur auf Viertelschlägen (nicht jeden Achtel)
-        if (s % 4 === 0) noiseShot(t, 0.013, 7000, 0.007);
+        if (ci >= 0) BG_CHORDS[ci].forEach((f, i) => osc(f, 'sine', t + i * 0.045, 1.9, 0.010));
+        // kein Schlagzeug, keine Hi-Hats
     }
 
     function _startBgLoop() {
