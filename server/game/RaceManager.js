@@ -340,6 +340,7 @@ class RaceManager {
                     h.finished    = true;
                     h.finishTime  = this._raceTime;
                     h.rawProgress = TOTAL_LAPS * TRACK_LENGTH;
+                    h.progress    = h.rawProgress % TRACK_LENGTH;  // = 0, Fix für unbounded-Progress
                     this.finishOrder.push(id);
                     if (this.finishOrder.length === this.horses.size) this._endRace();
                     continue;
