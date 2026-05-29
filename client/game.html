@@ -13,56 +13,99 @@
     <!-- ── Lobby-Browser ──────────────────────────────────────────────────── -->
     <div id="lobbyBrowser">
         <div id="lobbyBrowserBox">
-            <div id="lbTitle">🏇 ALICIA ONLINE</div>
-            <div id="lbSubtitle">Wähle eine Lobby oder erstelle deine eigene</div>
 
-            <!-- Fehler-Banner -->
+            <div id="lbHeader">
+                <div id="lbTitle">🏇 Alicia Online</div>
+                <div id="lbSubtitle">Wähle eine Lobby oder erstelle deine eigene</div>
+            </div>
+
             <div id="lobbyBrowserError" style="display:none;"></div>
 
-            <!-- Öffentliche Lobbys -->
-            <div id="lbSection">
-                <div class="lb-section-head">
-                    <span>Öffentliche Lobbys</span>
-                    <span id="lbRefreshHint">wird alle 4 s aktualisiert</span>
+            <!-- Zwei Spalten -->
+            <div id="lbColumns">
+
+                <!-- Links: Öffentliche Lobbys -->
+                <div class="lb-col">
+                    <div class="lb-col-head">
+                        <span>Öffentliche Lobbys</span>
+                        <span id="lbRefreshHint">alle 4 s</span>
+                    </div>
+                    <div id="lobbyList"><div class="lb-empty">⏳ Verbinde mit Server…</div></div>
                 </div>
-                <div id="lobbyList"><div class="lb-empty">⏳ Verbinde mit Server…</div></div>
+
+                <!-- Rechts: Erstellen -->
+                <div class="lb-col">
+                    <div class="lb-col-head"><span>Neue Lobby erstellen</span></div>
+                    <div class="lb-form">
+                        <input id="newLobbyName" type="text" maxlength="28"
+                            placeholder="Lobby-Name (optional)"
+                            onkeydown="event.stopPropagation(); if(event.key==='Enter') createLobby();">
+
+                        <div class="lb-form-row">
+                            <div class="lb-form-group">
+                                <label>Runden</label>
+                                <select id="newLobbyLaps">
+                                    <option value="1">1</option>
+                                    <option value="2" selected>2</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
+                                    <option value="5">5</option>
+                                    <option value="6">6</option>
+                                    <option value="8">8</option>
+                                    <option value="10">10</option>
+                                </select>
+                            </div>
+                            <div class="lb-form-group">
+                                <label>Max. Spieler</label>
+                                <select id="newLobbyMaxPlayers">
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4" selected>4</option>
+                                    <option value="5">5</option>
+                                    <option value="6">6</option>
+                                    <option value="8">8</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <label class="lb-pub-label">
+                            <input type="checkbox" id="newLobbyPublic" checked>
+                            Öffentlich sichtbar
+                        </label>
+
+                        <button id="lbCreateBtn" onclick="createLobby()">➕ Lobby erstellen</button>
+                    </div>
+                </div>
+
             </div>
 
-            <!-- Eigene Lobby erstellen -->
-            <div id="lbCreate">
-                <div class="lb-section-head"><span>Neue Lobby erstellen</span></div>
-                <div id="lbCreateRow">
-                    <input id="newLobbyName" type="text" maxlength="28" placeholder="Lobby-Name (optional)"
-                        onkeydown="event.stopPropagation(); if(event.key==='Enter') createLobby();">
-                    <select id="newLobbyLaps" title="Rundenanzahl">
-                        <option value="1">1 Runde</option>
-                        <option value="2" selected>2 Runden</option>
-                        <option value="3">3 Runden</option>
-                        <option value="4">4 Runden</option>
-                        <option value="5">5 Runden</option>
-                        <option value="6">6 Runden</option>
-                        <option value="7">7 Runden</option>
-                        <option value="8">8 Runden</option>
-                        <option value="9">9 Runden</option>
-                        <option value="10">10 Runden</option>
-                    </select>
-                    <label class="lb-pub-label">
-                        <input type="checkbox" id="newLobbyPublic" checked>
-                        öffentlich
-                    </label>
-                    <button id="lbCreateBtn" onclick="createLobby()">➕ Erstellen</button>
-                </div>
+            <!-- Code-Beitritt -->
+            <div id="lbCodeRow">
+                <span class="lb-code-label">🔑 Mit Code beitreten</span>
+                <input id="lbCodeInput" type="text" maxlength="20" placeholder="Raum-Code eingeben…"
+                    onkeydown="event.stopPropagation(); if(event.key==='Enter') joinByCode();">
+                <button id="lbCodeBtn" onclick="joinByCode()">Beitreten</button>
             </div>
+
         </div>
     </div>
 
     <!-- ── Lobby-Panel ─────────────────────────────────────────────────────── -->
     <div id="lobbyPanel">
         <div id="lobbyBox">
-            <div id="lobbyTitle">🏇 ALICIA ONLINE — LOBBY</div>
-            <div id="lobbySubtitle">
-                <span id="lobbyReadyCount">0/0 bereit</span>
-                &nbsp;— Alle müssen bereit sein um zu starten
+
+            <div id="lobbyHeader">
+                <div id="lobbyTitle">🏇 Alicia Online</div>
+                <div id="lobbySubtitle">
+                    <span id="lobbyReadyCount">0/0 bereit</span>
+                    &nbsp;— Alle müssen bereit sein um zu starten
+                </div>
+                <!-- Raum-Code (nur bei privater Lobby) -->
+                <div id="lobbyCodeBox" style="display:none">
+                    🔒 Privater Raum &nbsp;·&nbsp; Code:
+                    <span id="lobbyCodeValue" class="lobby-code-val"></span>
+                    <button class="lobby-copy-btn" onclick="copyLobbyCode()" title="Kopieren">📋</button>
+                </div>
             </div>
 
             <div id="lobbyMain">
@@ -74,7 +117,7 @@
                     <h3>💬 Chat</h3>
                     <div id="chatMessages"></div>
                     <div id="chatInputRow">
-                        <input id="chatInput" type="text" maxlength="80" placeholder="Nachricht eingeben..."
+                        <input id="chatInput" type="text" maxlength="80" placeholder="Nachricht…"
                             onkeydown="event.stopPropagation(); if(event.key==='Enter') sendChatMsg();">
                         <button id="chatSendBtn" onclick="sendChatMsg()">➤</button>
                     </div>

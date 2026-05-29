@@ -125,10 +125,10 @@ const Audio = (() => {
 
     // ── Sound-Effekte ─────────────────────────────────────────────────────────
 
-    function playHoof() {
+    function playHoof(vol = 1.0) {
         const t = getCtx().currentTime;
-        noiseShot(t,       0.04, 300, 0.30);   // dumpfer Aufprall
-        noiseShot(t + 0.04,0.03, 600, 0.13);   // kurzes Nachklingen
+        noiseShot(t, 0.06, 320, 0.24 * vol);    // dumpfer Aufprall
+        osc(72, 'sine', t, 0.09, 0.10 * vol);   // tiefe Resonanz
     }
 
     function playJump() {
@@ -224,28 +224,49 @@ const Audio = (() => {
     // ── Hufschlag-Rhythmus ────────────────────────────────────────────────────
     // Wird basierend auf Geschwindigkeit getaktet
 
-    let _speed = 0;
+    let _speed   = 0;
+    let _jumping = false;
 
-    function setHoofSpeed(speed) { _speed = speed; }
+    function setHoofSpeed(speed)  { _speed   = speed; }
+    function setJumping(isJump)   { _jumping = isJump; }
 
     function _hoofLoop() {
+        // Kein Hufschlag während des Sprungs
+        if (_jumping) {
+            hoofTimer = setTimeout(_hoofLoop, 80);
+            return;
+        }
+
         if (_speed > 2) {
-            playHoof();
-            // Galopp-Muster: 3 Schläge pro Zyklus (da-da-DUM)
-            const interval = Math.max(60, 350 - _speed * 9);
-            hoofTimer = setTimeout(() => {
-                if (_speed > 2) {
-                    playHoof();
+            // Basis-Schlaginterval: speed=5→330ms, speed=15→235ms, speed=30→95ms
+            const beatMs = Math.max(90, 370 - _speed * 9.2);
+
+            if (_speed < 11) {
+                // ── Trab: zwei gleichmäßige Schläge, mittlere Pause ──────────
+                // Klingt wie: ta-ta … ta-ta …
+                playHoof(0.80);
+                hoofTimer = setTimeout(() => {
+                    if (!_jumping && _speed > 2) playHoof(0.90);
+                    hoofTimer = setTimeout(_hoofLoop, beatMs * 1.0);
+                }, beatMs * 1.05);
+
+            } else {
+                // ── Galopp: ungleichmäßiges quick-quick-HEAVY Muster ─────────
+                // Erster Schlag: weich
+                // Zweiter Schlag: schnell dahinter (0.45× Abstand)
+                // Dritter Schlag: schwerer Hauptschlag (0.80× Abstand weiter)
+                // Dann längere Pause (1.5× beatMs)
+                playHoof(0.70);
+                hoofTimer = setTimeout(() => {
+                    if (!_jumping && _speed > 2) playHoof(0.80);
                     hoofTimer = setTimeout(() => {
-                        if (_speed > 2) playHoof();
-                        hoofTimer = setTimeout(_hoofLoop, interval * 1.3);
-                    }, interval * 0.7);
-                } else {
-                    hoofTimer = setTimeout(_hoofLoop, interval);
-                }
-            }, interval * 0.55);
+                        if (!_jumping && _speed > 2) playHoof(1.15); // schwerer Hauptschlag
+                        hoofTimer = setTimeout(_hoofLoop, beatMs * 1.5);
+                    }, Math.round(beatMs * 0.80));
+                }, Math.round(beatMs * 0.45));
+            }
         } else {
-            hoofTimer = setTimeout(_hoofLoop, 200);
+            hoofTimer = setTimeout(_hoofLoop, 300);
         }
     }
 
@@ -331,7 +352,7 @@ const Audio = (() => {
     }
 
     return {
-        init, setHoofSpeed, startHoofLoop, stopBgMusic, startBgMusic,
+        init, setHoofSpeed, setJumping, startHoofLoop, stopBgMusic, startBgMusic,
         playJump, playLand, playHit, playCountdownBeep, playGo, playFinish,
         playPowerup, playExhausted, playCrowdCheer, playCrowdPass, playHorseScared,
     };

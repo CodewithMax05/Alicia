@@ -228,16 +228,12 @@ const Renderer = (() => {
             const hoof = BABYLON.MeshBuilder.CreateBox('h'+d.n, { width:0.35, height:0.22, depth:0.42 }, scene);
             hoof.position = new BABYLON.Vector3(0, -0.53, 0.06);
             hoof.material = hoofMat; hoof.parent = lower;
-            legMeshes.push({ upper, phase: d.phase });
+            legMeshes.push({ upper, lower, phase: d.phase, isFront: d.z > 0 });
         }
 
         // Treffanzeige (rote Umrandung)
-        const hit = BABYLON.MeshBuilder.CreateBox('hit',{width:2.2,height:3.2,depth:5.2},scene);
-        hit.material = mat(scene, new BABYLON.Color3(1,0.1,0.1));
-        hit.material.alpha = 0;
-        hit.material.wireframe = true;
-        hit.position.y = 2.1;
-        hit.parent = root;
+        // Emissive-Farbe für Hit-Flash (wird im Render-Loop gesetzt)
+        bodyMat.emissiveColor = new BABYLON.Color3(0, 0, 0);
 
         if (_shadowGen) root.getChildMeshes().forEach(m => _shadowGen.addShadowCaster(m));
 
@@ -372,7 +368,7 @@ const Renderer = (() => {
         slipPs.blendMode       = BABYLON.ParticleSystem.BLENDMODE_ADD;
         slipPs.start();
 
-        return { root, legMeshes, hitMesh: hit, dustPs, hitPs, shieldBubble, turboPs, finishPs, blitzPs, slipPs };
+        return { root, legMeshes, bodyMat, dustPs, hitPs, shieldBubble, turboPs, finishPs, blitzPs, slipPs };
     }
 
     function buildTree(x, z, h = 4, s = 1) {
@@ -893,13 +889,39 @@ const Renderer = (() => {
 
                 // Beinanimation
                 const swing = Math.min(h.speed * 0.06, 0.75);
-                const cycle = h.displayProgress * 0.18;
-                for (const leg of h.legMeshes) {
-                    leg.upper.rotation.x = Math.sin(cycle + leg.phase) * swing;
+                const dt    = engine.getDeltaTime() / 1000;
+
+                if (h.jumpHeight > 0.05) {
+                    // Sprung-Pose: Oberschenkel + Kniebeuge (Unterschenkel)
+                    // Vorne: Bein nach vorne gestreckt + Knie angewinkelt
+                    // Hinten: Bein nach hinten + Hinterknie hochgezogen (von hinten sichtbar)
+                    for (const leg of h.legMeshes) {
+                        const uTarget = leg.isFront ?  0.72 : -0.68;
+                        const lTarget = leg.isFront ?  0.55 :  0.70; // Knie/Hock angewinkelt
+                        leg.upper.rotation.x += (uTarget - leg.upper.rotation.x) * 0.16;
+                        if (leg.lower) leg.lower.rotation.x += (lTarget - leg.lower.rotation.x) * 0.16;
+                    }
+                } else {
+                    // Lauf-Animation: zeitbasierter Akkumulator
+                    const hz = Math.min(h.speed * 0.09, 1.8);
+                    h._legCycle += hz * Math.PI * 2 * dt;
+                    for (const leg of h.legMeshes) {
+                        leg.upper.rotation.x = Math.sin(h._legCycle + leg.phase) * swing;
+                        // Unterschenkel zurück auf 0 lerpen (nach Sprung)
+                        if (leg.lower && Math.abs(leg.lower.rotation.x) > 0.01)
+                            leg.lower.rotation.x += (0 - leg.lower.rotation.x) * 0.16;
+                    }
                 }
 
                 // Treffer-Highlight
-                if (h.hitMesh) h.hitMesh.material.alpha = h.penalized ? 0.6 : 0;
+                // Hit-Flash: Pferd leuchtet kurz rot auf, zieht dann aus
+                if (h.penalized && !h._wasPenalized) h._hitFlash = 1.0;
+                if (h._hitFlash > 0) {
+                    h._hitFlash = Math.max(0, h._hitFlash - 0.045);
+                    if (h.bodyMat) h.bodyMat.emissiveColor.set(h._hitFlash * 0.9, 0, 0);
+                } else if (h.bodyMat && h.bodyMat.emissiveColor.r > 0) {
+                    h.bodyMat.emissiveColor.set(0, 0, 0);
+                }
 
                 // Staub (Tempo-abhängig)
                 if (h.dustPs) h.dustPs.emitRate = h.speed > 8 ? Math.min(90, h.speed * 2.2) : 0;
@@ -973,6 +995,25 @@ const Renderer = (() => {
                         }
                     }
                 }
+
+                // ── Label Proximity-Fade ──────────────────────────────────────
+                if (h.labelPlane && h.labelPlane.material) {
+                    let target = 0;
+                    if (id === _playerId) {
+                        // Eigenes Label: nur in Übersicht leicht einblenden
+                        target = cameraMode === 'overview' ? 0.40 : 0;
+                    } else if (_playerId && horses[_playerId]) {
+                        const dist = BABYLON.Vector3.Distance(
+                            horses[_playerId].root.position, h.root.position);
+                        // Einblenden 6–22 Einheiten, voll sichtbar unter 6
+                        target = dist < 6  ? 0.88
+                               : dist > 22 ? 0
+                               : 0.88 * (22 - dist) / 16;
+                    }
+                    // Sanftes Überblenden
+                    const cur = h.labelPlane.material.alpha;
+                    h.labelPlane.material.alpha = cur + (target - cur) * 0.10;
+                }
             }
 
             // Power-Up-Animation (außerhalb des Pferde-Loops)
@@ -1024,76 +1065,157 @@ const Renderer = (() => {
 
     // ── Jockey-Charakter auf dem Pferd ────────────────────────────────────────
     function createRider(horseRoot, cfg) {
-        const SKIN  = [[0.95,0.78,0.62],[0.82,0.61,0.43],[0.55,0.38,0.26],[0.88,0.67,0.48]];
-        const SHIRT = [[0.85,0.15,0.15],[0.20,0.45,0.85],[0.15,0.72,0.25],
-                       [0.95,0.82,0.10],[0.65,0.18,0.82],[0.92,0.92,0.92]];
-        const PANTS = [[0.12,0.12,0.15],[0.15,0.25,0.50],[0.42,0.28,0.18],[0.55,0.55,0.58]];
+        // 8 Hautfarben
+        const SKIN = [
+            [0.99,0.91,0.80], [0.94,0.78,0.62], [0.91,0.71,0.54], [0.82,0.61,0.43],
+            [0.75,0.50,0.31], [0.67,0.47,0.28], [0.55,0.38,0.26], [0.36,0.22,0.11],
+        ];
+        // 10 Oberteil-Farben
+        const SHIRT = [
+            [0.85,0.15,0.15], [0.20,0.45,0.85], [0.15,0.72,0.25], [0.95,0.82,0.10],
+            [0.65,0.18,0.82], [0.92,0.92,0.92], [0.91,0.47,0.13], [0.08,0.78,0.78],
+            [0.91,0.16,0.53], [0.15,0.15,0.15],
+        ];
+        // 6 Hosen-Farben
+        const PANTS = [
+            [0.12,0.12,0.15], [0.15,0.25,0.50], [0.42,0.28,0.18],
+            [0.55,0.55,0.58], [0.24,0.43,0.16], [0.50,0.00,0.13],
+        ];
 
-        const sk = SKIN [( cfg.face  || 0) % SKIN.length];
+        const sk = SKIN [(cfg.face   || 0) % SKIN.length];
         const sh = SHIRT[(cfg.shirt  || 0) % SHIRT.length];
         const pa = PANTS[(cfg.pants  || 0) % PANTS.length];
+        const helmetIdx = (cfg.helmet || 0) % 4;
 
         const skinM  = mat(scene, new BABYLON.Color3(sk[0], sk[1], sk[2]));
         const shirtM = mat(scene, new BABYLON.Color3(sh[0], sh[1], sh[2]));
         const pantsM = mat(scene, new BABYLON.Color3(pa[0], pa[1], pa[2]));
         const bootM  = mat(scene, new BABYLON.Color3(0.18, 0.10, 0.05));
-        const helmM  = mat(scene, new BABYLON.Color3(sh[0]*0.55, sh[1]*0.55, sh[2]*0.55));
         const visorM = mat(scene, new BABYLON.Color3(0.07, 0.07, 0.09));
 
-        // Unsichtbarer Root-Mesh (damit dispose() via getChildMeshes() greift)
+        // Unsichtbarer Root-Mesh
         const rRoot = BABYLON.MeshBuilder.CreateBox('rider_' + Math.random(), {size:0.01}, scene);
         rRoot.isVisible  = false;
         rRoot.parent     = horseRoot;
         rRoot.position   = new BABYLON.Vector3(0, 3.05, 0.1);
-        rRoot.rotation.x = 0.28;    // Jockey lehnt nach vorne
+        rRoot.rotation.x = 0.28;
 
         function rp(sz, pos, m, rx, rz) {
             const mesh = BABYLON.MeshBuilder.CreateBox('rm_' + Math.random(), sz, scene);
             mesh.position = new BABYLON.Vector3(pos[0], pos[1], pos[2]);
             if (rx) mesh.rotation.x = rx;
             if (rz) mesh.rotation.z = rz;
-            mesh.material = m;
-            mesh.parent   = rRoot;
+            mesh.material = m; mesh.parent = rRoot;
+            if (_shadowGen) _shadowGen.addShadowCaster(mesh);
+            return mesh;
+        }
+        function rc(opt, pos, m) {
+            const mesh = BABYLON.MeshBuilder.CreateCylinder('rc_' + Math.random(), opt, scene);
+            mesh.position = new BABYLON.Vector3(pos[0], pos[1], pos[2]);
+            mesh.material = m; mesh.parent = rRoot;
             if (_shadowGen) _shadowGen.addShadowCaster(mesh);
             return mesh;
         }
 
-        // Torso
-        rp({width:0.65, height:0.78, depth:0.42}, [ 0,     0.37,  0    ], shirtM);
-        // Kopf
-        rp({width:0.50, height:0.50, depth:0.50}, [ 0,     0.96,  0.04 ], skinM);
-        // Helm
-        rp({width:0.56, height:0.20, depth:0.56}, [ 0,     1.26,  0.04 ], helmM);
-        // Visier
-        rp({width:0.52, height:0.09, depth:0.08}, [ 0,     1.06,  0.26 ], visorM);
-        // Arme (Zügel halten, nach vorne geneigt)
-        rp({width:0.20, height:0.44, depth:0.20}, [ 0.43,  0.35,  0.14 ], shirtM, 0.52);
-        rp({width:0.20, height:0.44, depth:0.20}, [-0.43,  0.35,  0.14 ], shirtM, 0.52);
-        // Hüftblock – verbindet Torso mit Beinen über die Pferdebreite
-        rp({width:1.78, height:0.24, depth:0.38}, [ 0,    -0.05,  0    ], pantsM);
-        // Oberschenkel (kürzer als vorher)
-        rp({width:0.26, height:0.36, depth:0.28}, [ 0.90, -0.26,  0    ], pantsM);
-        rp({width:0.26, height:0.36, depth:0.28}, [-0.90, -0.26,  0    ], pantsM);
-        // Unterschenkel – leicht nach hinten geneigt (Kniebeuge-Effekt)
-        rp({width:0.23, height:0.30, depth:0.23}, [ 0.90, -0.52, -0.08 ], pantsM, -0.30);
-        rp({width:0.23, height:0.30, depth:0.23}, [-0.90, -0.52, -0.08 ], pantsM, -0.30);
-        // Stiefel (kurz & kompakt)
-        rp({width:0.27, height:0.15, depth:0.34}, [ 0.90, -0.70, -0.06 ], bootM);
-        rp({width:0.27, height:0.15, depth:0.34}, [-0.90, -0.70, -0.06 ], bootM);
+        // ── Körper ────────────────────────────────────────────────────────────
+        rp({width:0.65, height:0.78, depth:0.42}, [ 0,    0.37,  0    ], shirtM);
+        rp({width:0.50, height:0.50, depth:0.50}, [ 0,    0.96,  0.04 ], skinM);   // Kopf
+
+        // ── Gesicht ───────────────────────────────────────────────────────────
+        // Kopf-Vorderfläche liegt bei z = 0.04 + 0.25 = 0.29 (rRoot-Lokalraum)
+        const eyeM   = mat(scene, new BABYLON.Color3(0.08, 0.05, 0.03));
+        const browM  = mat(scene, new BABYLON.Color3(sk[0]*0.28, sk[1]*0.17, sk[2]*0.08));
+        const mouthM = mat(scene, new BABYLON.Color3(0.48, 0.18, 0.14));
+        const noseM  = mat(scene, new BABYLON.Color3(sk[0]*0.78, sk[1]*0.60, sk[2]*0.42));
+        // Augen
+        rp({width:0.09, height:0.07, depth:0.03}, [ 0.11, 1.01, 0.295], eyeM);
+        rp({width:0.09, height:0.07, depth:0.03}, [-0.11, 1.01, 0.295], eyeM);
+        // Augenbrauen — leicht schräg für Ausdruck
+        rp({width:0.09, height:0.03, depth:0.02}, [ 0.11, 1.07, 0.290], browM, 0, -0.18);
+        rp({width:0.09, height:0.03, depth:0.02}, [-0.11, 1.07, 0.290], browM, 0,  0.18);
+        // Nase — kleiner vorstehender Block
+        rp({width:0.07, height:0.09, depth:0.06}, [0,     0.94, 0.305], noseM);
+        // Mund
+        rp({width:0.14, height:0.04, depth:0.02}, [0,     0.83, 0.290], mouthM);
+        rp({width:0.20, height:0.44, depth:0.20}, [ 0.43, 0.48, 0.16 ], shirtM, -1.10);
+        rp({width:0.20, height:0.44, depth:0.20}, [-0.43, 0.48, 0.16 ], shirtM, -1.10);
+        rp({width:1.78, height:0.24, depth:0.38}, [ 0,   -0.05,  0    ], pantsM);
+        rp({width:0.26, height:0.36, depth:0.28}, [ 0.90,-0.26,  0    ], pantsM);
+        rp({width:0.26, height:0.36, depth:0.28}, [-0.90,-0.26,  0    ], pantsM);
+        rp({width:0.23, height:0.30, depth:0.23}, [ 0.90,-0.52, -0.08 ], pantsM, -0.30);
+        rp({width:0.23, height:0.30, depth:0.23}, [-0.90,-0.52, -0.08 ], pantsM, -0.30);
+        rp({width:0.27, height:0.15, depth:0.34}, [ 0.90,-0.70, -0.06 ], bootM);
+        rp({width:0.27, height:0.15, depth:0.34}, [-0.90,-0.70, -0.06 ], bootM);
+
+        // ── Kopfbedeckung ─────────────────────────────────────────────────────
+        if (helmetIdx === 0) {
+            // Jockey-Cap — glatte Helmkuppel, kleiner Schirm vorne, kein Visier
+            const helmM = mat(scene, new BABYLON.Color3(0.15, 0.35, 0.75));
+            const rimM  = mat(scene, new BABYLON.Color3(0.08, 0.20, 0.52));
+            // Hauptkuppel: etwas größer + mehr Segmente = glatter
+            const dome = BABYLON.MeshBuilder.CreateSphere('hd_' + Math.random(),
+                { diameter: 0.64, segments: 9 }, scene);
+            dome.scaling.y = 0.74;
+            dome.position  = new BABYLON.Vector3(0, 1.29, 0.12);
+            dome.material  = helmM; dome.parent = rRoot;
+            if (_shadowGen) _shadowGen.addShadowCaster(dome);
+            // Schirm: flacher Zylinder, Mitte an Kuppelvorderkante (z=0.40) →
+            // hintere Hälfte steckt im Dome, vordere Hälfte = Halbkreis-Schirm
+            const _brim = BABYLON.MeshBuilder.CreateCylinder('br_' + Math.random(),
+                { diameter: 0.36, height: 0.05, tessellation: 16 }, scene);
+            _brim.position  = new BABYLON.Vector3(0, 1.17, 0.40);
+            _brim.rotation.x = 0.10;
+            _brim.material  = rimM; _brim.parent = rRoot;
+            if (_shadowGen) _shadowGen.addShadowCaster(_brim);
+
+        } else if (helmetIdx === 1) {
+            // 🤠 Cowboyhut — immer warmbraun, Krone läuft oben natürlich aus
+            const hatM  = mat(scene, new BABYLON.Color3(0.52, 0.30, 0.11));
+            const bandM = mat(scene, new BABYLON.Color3(0.28, 0.14, 0.04)); // dunkles Hutband
+            rc({diameter:1.04, height:0.06, tessellation:14},                         [0, 1.19, 0.04], hatM);  // Krempe
+            rc({diameterTop:0.40, diameterBottom:0.46, height:0.12, tessellation:10},[0, 1.28, 0.04], hatM);  // unterer Kronenzylinder
+            // Gewölbtes Oberteil: abgeflachte Halbkugel gibt die typische Stetson-Wölbung
+            const _cd = BABYLON.MeshBuilder.CreateSphere('chd_'+Math.random(), {diameter:0.42, segments:7}, scene);
+            _cd.scaling.y = 0.58;
+            _cd.position  = new BABYLON.Vector3(0, 1.40, 0.04);
+            _cd.material  = hatM; _cd.parent = rRoot;
+            if (_shadowGen) _shadowGen.addShadowCaster(_cd);
+            rc({diameter:0.47, height:0.05, tessellation:10},                         [0, 1.22, 0.04], bandM); // Hutband
+
+        } else if (helmetIdx === 2) {
+            // 🎩 Zylinder — schmaler Korpus + breite Krempe
+            const topM  = mat(scene, new BABYLON.Color3(0.09, 0.07, 0.07));
+            const bandM = mat(scene, new BABYLON.Color3(0.82, 0.08, 0.08));
+            rc({diameter:0.88, height:0.07, tessellation:12}, [0, 1.19, 0.04], topM);
+            rc({diameter:0.44, height:0.38, tessellation:12}, [0, 1.41, 0.04], topM);
+            rc({diameter:0.46, height:0.11, tessellation:12},  [0, 1.27, 0.04], bandM);
+
+        } else {
+            // Keine Kopfbedeckung — gestaffelte Haare (oben breit, unten schmal)
+            const hairM = mat(scene, new BABYLON.Color3(sk[0]*0.28, sk[1]*0.18, sk[2]*0.09));
+            // Obere Kappe
+            rp({width:0.54, height:0.13, depth:0.55}, [0,  1.25,  0.03], hairM);
+            // Hinterkopf — 3 Schichten werden schmaler nach unten
+            rp({width:0.50, height:0.12, depth:0.11}, [0,  1.13, -0.23], hairM);
+            rp({width:0.42, height:0.11, depth:0.10}, [0,  1.02, -0.23], hairM);
+            rp({width:0.30, height:0.10, depth:0.09}, [0,  0.92, -0.22], hairM);
+            // Seiten links & rechts
+            rp({width:0.09, height:0.26, depth:0.46}, [ 0.29, 1.04, 0.02], hairM);
+            rp({width:0.09, height:0.26, depth:0.46}, [-0.29, 1.04, 0.02], hairM);
+            // Stirnfransen
+            rp({width:0.48, height:0.11, depth:0.09}, [0,     1.18,  0.28], hairM);
+        }
     }
 
     // ── Name-Label als Billboard über dem Pferd ───────────────────────────────
+    // Klein und schlicht — Sichtbarkeit wird im Render-Loop per Distanz gesteuert.
     function _createLabel(name, isPlayer, horseType) {
-        const ICONS = { blitz: '⚡', sturm: '🌪', nebel: '🌫', feuer: '🔥' };
-        const icon  = ICONS[horseType] || '🐴';
-        const label = (icon + ' ' + (name || '?')).slice(0, 18);
-
-        const W = 320, H = 68;
+        const W = 192, H = 36;
         const plane = BABYLON.MeshBuilder.CreatePlane('lbl_' + name,
-            { width: 6.0, height: 1.28 }, scene);
+            { width: 2.8, height: 0.52 }, scene);
         plane.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
         plane.isPickable    = false;
-        plane.position.y    = 6.6;
+        plane.position.y    = 5.6;   // etwas niedriger als vorher
 
         const tex = new BABYLON.DynamicTexture('lbtex_' + name,
             { width: W, height: H }, scene, false);
@@ -1102,48 +1224,25 @@ const Renderer = (() => {
         const ctx2d = tex.getContext();
         ctx2d.clearRect(0, 0, W, H);
 
-        // Hintergrund-Pill (dunkler für Spieler, leicht getönt)
-        ctx2d.fillStyle = isPlayer ? 'rgba(30,18,0,0.88)' : 'rgba(0,0,0,0.75)';
-        const [rx, ry, rw, rh, rr] = [3, 3, W - 6, H - 6, 13];
-        ctx2d.beginPath();
-        ctx2d.moveTo(rx + rr, ry);
-        ctx2d.lineTo(rx + rw - rr, ry);       ctx2d.quadraticCurveTo(rx + rw, ry,      rx + rw, ry + rr);
-        ctx2d.lineTo(rx + rw, ry + rh - rr);  ctx2d.quadraticCurveTo(rx + rw, ry + rh, rx + rw - rr, ry + rh);
-        ctx2d.lineTo(rx + rr, ry + rh);       ctx2d.quadraticCurveTo(rx,      ry + rh, rx,      ry + rh - rr);
-        ctx2d.lineTo(rx, ry + rr);             ctx2d.quadraticCurveTo(rx,      ry,      rx + rr, ry);
-        ctx2d.closePath();
-        ctx2d.fill();
+        // Minimaler Hintergrund — kein Rahmen, kaum sichtbar
+        ctx2d.fillStyle = 'rgba(0,0,0,0.32)';
+        ctx2d.fillRect(0, 0, W, H);
 
-        // Goldener Rahmen für den eigenen Spieler
-        if (isPlayer) {
-            ctx2d.strokeStyle = '#ffd700';
-            ctx2d.lineWidth   = 2.5;
-            ctx2d.beginPath();
-            ctx2d.moveTo(rx + rr, ry);
-            ctx2d.lineTo(rx + rw - rr, ry);       ctx2d.quadraticCurveTo(rx + rw, ry,      rx + rw, ry + rr);
-            ctx2d.lineTo(rx + rw, ry + rh - rr);  ctx2d.quadraticCurveTo(rx + rw, ry + rh, rx + rw - rr, ry + rh);
-            ctx2d.lineTo(rx + rr, ry + rh);       ctx2d.quadraticCurveTo(rx,      ry + rh, rx,      ry + rh - rr);
-            ctx2d.lineTo(rx, ry + rr);             ctx2d.quadraticCurveTo(rx,      ry,      rx + rr, ry);
-            ctx2d.closePath();
-            ctx2d.stroke();
-        }
-
-        // Name + Icon
-        ctx2d.font        = 'bold 28px Arial, sans-serif';
-        ctx2d.textAlign   = 'center';
+        // Nur der Name, klares Weiß / helles Gold für eigenen Spieler
+        ctx2d.font         = `${isPlayer ? '600' : '500'} 18px Arial, sans-serif`;
+        ctx2d.textAlign    = 'center';
         ctx2d.textBaseline = 'middle';
-        ctx2d.shadowColor = 'rgba(0,0,0,0.9)';
-        ctx2d.shadowBlur  = 7;
-        ctx2d.fillStyle   = isPlayer ? '#ffd700' : '#ffffff';
-        ctx2d.fillText(label, W / 2, H / 2 + 2);
+        ctx2d.fillStyle    = isPlayer ? 'rgba(255,228,110,1.0)' : 'rgba(255,255,255,0.97)';
+        ctx2d.fillText((name || '?').slice(0, 14), W / 2, H / 2 + 1);
         tex.update();
 
         const lm = new BABYLON.StandardMaterial('lbmat_' + name, scene);
-        lm.diffuseTexture  = tex;
-        lm.emissiveTexture = tex;
+        lm.diffuseTexture             = tex;
+        lm.emissiveTexture            = tex;
         lm.useAlphaFromDiffuseTexture = true;
-        lm.disableLighting = true;
-        lm.backFaceCulling = false;
+        lm.disableLighting            = true;
+        lm.backFaceCulling            = false;
+        lm.alpha = 0;   // startet unsichtbar, Render-Loop regelt Proximity-Fade
         plane.material = lm;
 
         return plane;
@@ -1171,14 +1270,14 @@ const Renderer = (() => {
                 : isPlayer
                     ? new BABYLON.Color3(0.85, 0.55, 0.15)
                     : new BABYLON.Color3(0.3+Math.random()*0.5, 0.2+Math.random()*0.3, 0.1+Math.random()*0.4);
-            const { root, legMeshes, hitMesh, shieldBubble, turboPs, finishPs, blitzPs, slipPs } = createHorse(scene, color);
+            const { root, legMeshes, bodyMat, shieldBubble, turboPs, finishPs, blitzPs, slipPs } = createHorse(scene, color);
             createRider(root, riderCfg || { face:0, shirt:0, pants:0 });
             const labelPlane = _createLabel(name || '?', isPlayer, horseType);
             labelPlane.parent = root;
-            horses[id] = { root, legMeshes, hitMesh, labelPlane,
+            horses[id] = { root, legMeshes, bodyMat, labelPlane,
                 shieldBubble, turboPs, finishPs, blitzPs, slipPs,
                 displayProgress: unbound, targetProgress: unbound,
-                _trackedLaps: lapCount,
+                _trackedLaps: lapCount, _legCycle: 0,
                 speed: 0, displayLane: lane, targetLane: lane, jumpHeight: 0, penalized: false,
                 shieldActive: false, turboActive: false, finished: false, _wasFinished: false,
                 slipstream: false, blitzStunned: false, _wasBlitzStunned: false };

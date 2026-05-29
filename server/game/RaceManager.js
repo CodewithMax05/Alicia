@@ -1,5 +1,35 @@
 const TRACK_LENGTH  = 1000;
 const GRAVITY       = 30;
+const TRACK_A       = 55;    // Ellipsen-Halbachse X (muss mit renderer.js übereinstimmen)
+const TRACK_B       = 28;    // Ellipsen-Halbachse Z
+
+// Spurversatz: [-3.5, 0, +3.5] für Innen/Mitte/Außen
+const LANE_OFFSETS = [-3.5, 0, 3.5];
+
+// Spurlängen-Skalierung:
+//   Für eine konvexe geschlossene Kurve gilt: C(d) = C₀ + 2π·d
+//   Ellipsen-Umfang Mitte ≈ 267.6 → Innen (d=-3.5): 245.6 | Außen (d=+3.5): 289.6
+//   LANE_SCALE[lane] = C_mitte / C_lane → rawProgress schneller auf Innenbahn, langsamer auf Außenbahn
+const LANE_SCALE = [267.6 / 245.6,   // Innen  ≈ 1.0896
+                    1.000,            // Mitte
+                    267.6 / 289.6];  // Außen  ≈ 0.9240
+
+// Mittlere Bogenlänge der Mittelspur: ∫₀^2π sqrt(sin²t·A²+cos²t·B²) dt / (2π)
+// ≈ Ellipsen-Umfang / (2π) ≈ 267.6 / (2π) ≈ 42.60
+// Wird für Arc-Normalisierung verwendet, damit Pferd physisch überall gleich schnell fährt.
+const AVG_RAW_ARC = 42.60;
+
+// Gibt 2D-Weltposition auf der Strecke zurück (für physische Distanzberechnungen)
+function trackPos2D(progress, laneOffset) {
+    const t  = (progress / TRACK_LENGTH) * Math.PI * 2;
+    const cx = Math.cos(t) * TRACK_A;
+    const cz = Math.sin(t) * TRACK_B;
+    if (laneOffset === 0) return { x: cx, z: cz };
+    const tx  = -Math.sin(t) * TRACK_A;
+    const tz  =  Math.cos(t) * TRACK_B;
+    const len = Math.sqrt(tx * tx + tz * tz);
+    return { x: cx + (tz / len) * laneOffset, z: cz + (-tx / len) * laneOffset };
+}
 
 const WEATHER_OPTIONS = ['sunny', 'sunset', 'night', 'dawn', 'rainy', 'foggy'];
 
@@ -322,13 +352,20 @@ class RaceManager {
             if (h.blitzStunTimer > 0) effectiveMax = Math.min(effectiveMax, h.maxSpeed * 0.42);
 
 
-            // Windschatten: eng hinter einem anderen Pferd in gleicher Spur (enger Bereich)
+            // Windschatten: physische 2D-Distanz statt rawProgress-Lücke
+            // → funktioniert in Kurven und auf Geraden gleich
             h.slipstream = false;
-            for (const [oid, other] of this.horses) {
-                if (oid === id || other.finished) continue;
-                if (other.lane !== h.lane) continue;
-                const gap = other.rawProgress - h.rawProgress;
-                if (gap > 2 && gap < 28) { h.slipstream = true; break; }
+            {
+                const hPos = trackPos2D(h.progress, LANE_OFFSETS[h.lane]);
+                for (const [oid, other] of this.horses) {
+                    if (oid === id || other.finished) continue;
+                    if (other.lane !== h.lane) continue;
+                    if (other.rawProgress <= h.rawProgress) continue; // muss vor uns sein
+                    const oPos = trackPos2D(other.progress, LANE_OFFSETS[other.lane]);
+                    const dx = oPos.x - hPos.x, dz = oPos.z - hPos.z;
+                    const dist2 = dx * dx + dz * dz;
+                    if (dist2 > 1.5 * 1.5 && dist2 < 9 * 9) { h.slipstream = true; break; }
+                }
             }
 
             // Geschwindigkeit & Stamina
@@ -364,8 +401,20 @@ class RaceManager {
             }
 
             // Fortschritt & Runden
+            // Arc-Normalisierung: Pferd bewegt sich physisch überall gleich schnell,
+            // egal ob Kurve oder Gerade. rawArc = lokale Bogenlänge pro Progress-Einheit
+            // (ohne 2π/TRACK_LENGTH-Faktor). arcNorm = AVG/lokal → in Kurven (rawArc groß)
+            // schreitet rawProgress langsamer vor, auf Geraden (rawArc klein) schneller.
+            // Spurlängen-Skalierung: Innenbahn schreitet schneller voran (kürzere Strecke).
+            const t_arc   = (h.rawProgress / TRACK_LENGTH) * Math.PI * 2;
+            const rawArc  = Math.sqrt(
+                Math.sin(t_arc) * Math.sin(t_arc) * TRACK_A * TRACK_A +
+                Math.cos(t_arc) * Math.cos(t_arc) * TRACK_B * TRACK_B
+            );
+            const arcNorm = AVG_RAW_ARC / rawArc;
+
             const prevLap  = Math.floor(h.rawProgress / TRACK_LENGTH);
-            h.rawProgress += h.speed * deltaTime;
+            h.rawProgress += h.speed * deltaTime * LANE_SCALE[h.lane] * arcNorm;
             const newLap   = Math.floor(h.rawProgress / TRACK_LENGTH);
             if (newLap > prevLap) {
                 h.laps = newLap;

@@ -7,110 +7,153 @@
 </head>
 <body>
     <div id="selectionScreen">
-        <h1>🏇 Alicia Online</h1>
 
-        <!-- Namenseingabe -->
-        <div style="margin-bottom:20px; display:flex; align-items:center; gap:10px;">
-            <label style="color:#aaa; font-size:13px;">Dein Name:</label>
-            <input id="playerName" type="text" maxlength="16" placeholder="Fahrer"
-                onkeydown="event.stopPropagation()">
-        </div>
+        <!-- Header -->
+        <header class="sel-header">
+            <h1>🏇 Alicia Online</h1>
+            <p>Multiplayer Pferderennen</p>
+        </header>
 
-        <p>Wähle dein Pferd für das Rennen</p>
+        <!-- Zwei Spalten -->
+        <div class="sel-main">
 
-        <!-- Pferde-Auswahl -->
-        <div class="horse-grid">
-            <button type="button" class="horse-card" onclick="selectHorse('blitz', this)">
-                <div class="horse-icon" style="background:rgba(200,134,10,0.25)">🐴</div>
-                <h3>⚡ Blitz</h3>
-                <small>Ausgewogen – gut in allem</small>
-                <div class="stat-row"><span class="stat-label">Speed</span><div class="stat-track"><div class="stat-fill" style="width:85%;background:#ffd700"></div></div></div>
-                <div class="stat-row"><span class="stat-label">Ausdauer</span><div class="stat-track"><div class="stat-fill" style="width:66%;background:#4caf50"></div></div></div>
-                <div class="stat-row"><span class="stat-label">Beschl.</span><div class="stat-track"><div class="stat-fill" style="width:61%;background:#2196f3"></div></div></div>
-                <div class="stat-row"><span class="stat-label">Sprung</span><div class="stat-track"><div class="stat-fill" style="width:83%;background:#9c27b0"></div></div></div>
-            </button>
-            <button type="button" class="horse-card" onclick="selectHorse('sturm', this)">
-                <div class="horse-icon" style="background:rgba(90,106,122,0.25)">🐴</div>
-                <h3>🌪️ Sturm</h3>
-                <small>Schnellste Beschleunigung – ideal nach Hindernissen</small>
-                <div class="stat-row"><span class="stat-label">Speed</span><div class="stat-track"><div class="stat-fill" style="width:80%;background:#ffd700"></div></div></div>
-                <div class="stat-row"><span class="stat-label">Ausdauer</span><div class="stat-track"><div class="stat-fill" style="width:60%;background:#4caf50"></div></div></div>
-                <div class="stat-row"><span class="stat-label">Beschl.</span><div class="stat-track"><div class="stat-fill" style="width:100%;background:#2196f3"></div></div></div>
-                <div class="stat-row"><span class="stat-label">Sprung</span><div class="stat-track"><div class="stat-fill" style="width:83%;background:#9c27b0"></div></div></div>
-            </button>
-            <button type="button" class="horse-card" onclick="selectHorse('nebel', this)">
-                <div class="horse-icon" style="background:rgba(106,170,212,0.25)">🐴</div>
-                <h3>🌫️ Nebel</h3>
-                <small>Unermüdlich – läuft am längsten durch</small>
-                <div class="stat-row"><span class="stat-label">Speed</span><div class="stat-track"><div class="stat-fill" style="width:75%;background:#ffd700"></div></div></div>
-                <div class="stat-row"><span class="stat-label">Ausdauer</span><div class="stat-track"><div class="stat-fill" style="width:100%;background:#4caf50"></div></div></div>
-                <div class="stat-row"><span class="stat-label">Beschl.</span><div class="stat-track"><div class="stat-fill" style="width:50%;background:#2196f3"></div></div></div>
-                <div class="stat-row"><span class="stat-label">Sprung</span><div class="stat-track"><div class="stat-fill" style="width:100%;background:#9c27b0"></div></div></div>
-            </button>
-            <button type="button" class="horse-card" onclick="selectHorse('feuer', this)">
-                <div class="horse-icon" style="background:rgba(204,34,0,0.25)">🐴</div>
-                <h3>🔥 Feuer</h3>
-                <small>Höchste Topspeed – träge, aber unaufhaltbar</small>
-                <div class="stat-row"><span class="stat-label">Speed</span><div class="stat-track"><div class="stat-fill" style="width:100%;background:#ffd700"></div></div></div>
-                <div class="stat-row"><span class="stat-label">Ausdauer</span><div class="stat-track"><div class="stat-fill" style="width:60%;background:#4caf50"></div></div></div>
-                <div class="stat-row"><span class="stat-label">Beschl.</span><div class="stat-track"><div class="stat-fill" style="width:47%;background:#2196f3"></div></div></div>
-                <div class="stat-row"><span class="stat-label">Sprung</span><div class="stat-track"><div class="stat-fill" style="width:75%;background:#9c27b0"></div></div></div>
-            </button>
-        </div>
+            <!-- Links: Pferd wählen -->
+            <div class="sel-panel">
+                <div class="panel-title">Pferd wählen</div>
+                <div class="horse-grid">
 
-        <!-- Charakter-Anpassung -->
-        <div class="char-section">
-            <p style="color:#888;font-size:12px;margin-bottom:14px;">👤 Gestalte deinen Fahrer</p>
-            <div class="char-row">
-                <span class="char-label">Hautfarbe</span>
-                <div class="char-opts" id="faceOpts">
-                    <button class="char-sw selected" style="background:#f0c89e" onclick="selectRider('face',0,this)" title="Hell"></button>
-                    <button class="char-sw" style="background:#d19a6a" onclick="selectRider('face',1,this)" title="Mittel"></button>
-                    <button class="char-sw" style="background:#8b6040" onclick="selectRider('face',2,this)" title="Dunkel"></button>
-                    <button class="char-sw" style="background:#e0aa7a" onclick="selectRider('face',3,this)" title="Gebräunt"></button>
+                    <button type="button" class="horse-card" onclick="selectHorse('blitz', this)">
+                        <div class="horse-icon" style="background:rgba(200,134,10,0.20)">🐴</div>
+                        <h3>⚡ Blitz</h3>
+                        <small>Ausgewogen – gut in allem</small>
+                        <div class="stat-row"><span class="stat-label">Speed</span><div class="stat-track"><div class="stat-fill" style="width:85%;background:#ffd700"></div></div></div>
+                        <div class="stat-row"><span class="stat-label">Ausdauer</span><div class="stat-track"><div class="stat-fill" style="width:66%;background:#4caf50"></div></div></div>
+                        <div class="stat-row"><span class="stat-label">Beschl.</span><div class="stat-track"><div class="stat-fill" style="width:61%;background:#2196f3"></div></div></div>
+                        <div class="stat-row"><span class="stat-label">Sprung</span><div class="stat-track"><div class="stat-fill" style="width:83%;background:#9c27b0"></div></div></div>
+                    </button>
+
+                    <button type="button" class="horse-card" onclick="selectHorse('sturm', this)">
+                        <div class="horse-icon" style="background:rgba(90,106,122,0.20)">🐴</div>
+                        <h3>🌪️ Sturm</h3>
+                        <small>Schnellste Beschleunigung</small>
+                        <div class="stat-row"><span class="stat-label">Speed</span><div class="stat-track"><div class="stat-fill" style="width:80%;background:#ffd700"></div></div></div>
+                        <div class="stat-row"><span class="stat-label">Ausdauer</span><div class="stat-track"><div class="stat-fill" style="width:60%;background:#4caf50"></div></div></div>
+                        <div class="stat-row"><span class="stat-label">Beschl.</span><div class="stat-track"><div class="stat-fill" style="width:100%;background:#2196f3"></div></div></div>
+                        <div class="stat-row"><span class="stat-label">Sprung</span><div class="stat-track"><div class="stat-fill" style="width:83%;background:#9c27b0"></div></div></div>
+                    </button>
+
+                    <button type="button" class="horse-card" onclick="selectHorse('nebel', this)">
+                        <div class="horse-icon" style="background:rgba(106,170,212,0.20)">🐴</div>
+                        <h3>🌫️ Nebel</h3>
+                        <small>Unermüdlich – längste Ausdauer</small>
+                        <div class="stat-row"><span class="stat-label">Speed</span><div class="stat-track"><div class="stat-fill" style="width:75%;background:#ffd700"></div></div></div>
+                        <div class="stat-row"><span class="stat-label">Ausdauer</span><div class="stat-track"><div class="stat-fill" style="width:100%;background:#4caf50"></div></div></div>
+                        <div class="stat-row"><span class="stat-label">Beschl.</span><div class="stat-track"><div class="stat-fill" style="width:50%;background:#2196f3"></div></div></div>
+                        <div class="stat-row"><span class="stat-label">Sprung</span><div class="stat-track"><div class="stat-fill" style="width:100%;background:#9c27b0"></div></div></div>
+                    </button>
+
+                    <button type="button" class="horse-card" onclick="selectHorse('feuer', this)">
+                        <div class="horse-icon" style="background:rgba(204,34,0,0.20)">🐴</div>
+                        <h3>🔥 Feuer</h3>
+                        <small>Höchste Topspeed</small>
+                        <div class="stat-row"><span class="stat-label">Speed</span><div class="stat-track"><div class="stat-fill" style="width:100%;background:#ffd700"></div></div></div>
+                        <div class="stat-row"><span class="stat-label">Ausdauer</span><div class="stat-track"><div class="stat-fill" style="width:60%;background:#4caf50"></div></div></div>
+                        <div class="stat-row"><span class="stat-label">Beschl.</span><div class="stat-track"><div class="stat-fill" style="width:47%;background:#2196f3"></div></div></div>
+                        <div class="stat-row"><span class="stat-label">Sprung</span><div class="stat-track"><div class="stat-fill" style="width:75%;background:#9c27b0"></div></div></div>
+                    </button>
+
                 </div>
             </div>
-            <div class="char-row">
-                <span class="char-label">Oberteil</span>
-                <div class="char-opts" id="shirtOpts">
-                    <button class="char-sw selected" style="background:#d92525" onclick="selectRider('shirt',0,this)"></button>
-                    <button class="char-sw" style="background:#3373d9" onclick="selectRider('shirt',1,this)"></button>
-                    <button class="char-sw" style="background:#25b840" onclick="selectRider('shirt',2,this)"></button>
-                    <button class="char-sw" style="background:#f2d018" onclick="selectRider('shirt',3,this)"></button>
-                    <button class="char-sw" style="background:#a62ed9" onclick="selectRider('shirt',4,this)"></button>
-                    <button class="char-sw" style="background:#eaeaea" onclick="selectRider('shirt',5,this)"></button>
+
+            <!-- Rechts: Fahrer & Start -->
+            <div class="sel-panel sel-right">
+                <div class="panel-title">Dein Fahrer</div>
+
+                <!-- Name -->
+                <div class="name-block">
+                    <label for="playerName">Name</label>
+                    <input id="playerName" type="text" maxlength="16" placeholder="Fahrer"
+                        onkeydown="event.stopPropagation()">
                 </div>
-            </div>
-            <div class="char-row">
-                <span class="char-label">Hose</span>
-                <div class="char-opts" id="pantsOpts">
-                    <button class="char-sw selected" style="background:#222228" onclick="selectRider('pants',0,this)"></button>
-                    <button class="char-sw" style="background:#263d80" onclick="selectRider('pants',1,this)"></button>
-                    <button class="char-sw" style="background:#6b472e" onclick="selectRider('pants',2,this)"></button>
-                    <button class="char-sw" style="background:#8c8c94" onclick="selectRider('pants',3,this)"></button>
+
+                <div class="sel-divider"></div>
+
+                <!-- Charakter -->
+                <div class="char-section">
+                    <div class="char-row">
+                        <span class="char-label">Kopf</span>
+                        <div class="char-opts" id="helmetOpts">
+                            <button class="char-sw char-hat selected" onclick="selectRider('helmet',0,this)" title="Cap">🧢</button>
+                            <button class="char-sw char-hat" onclick="selectRider('helmet',1,this)" title="Cowboyhut">🤠</button>
+                            <button class="char-sw char-hat" onclick="selectRider('helmet',2,this)" title="Zylinder">🎩</button>
+                            <button class="char-sw char-hat" onclick="selectRider('helmet',3,this)" title="Keine">🧑</button>
+                        </div>
+                    </div>
+                    <div class="char-row">
+                        <span class="char-label">Hautfarbe</span>
+                        <div class="char-opts" id="faceOpts">
+                            <button class="char-sw selected" style="background:#fce8cc" onclick="selectRider('face',0,this)" title="Sehr hell"></button>
+                            <button class="char-sw" style="background:#f0c89e" onclick="selectRider('face',1,this)" title="Hell"></button>
+                            <button class="char-sw" style="background:#e8b48a" onclick="selectRider('face',2,this)" title="Mittel-hell"></button>
+                            <button class="char-sw" style="background:#d19a6a" onclick="selectRider('face',3,this)" title="Mittel"></button>
+                            <button class="char-sw" style="background:#bf8050" onclick="selectRider('face',4,this)" title="Gebräunt"></button>
+                            <button class="char-sw" style="background:#ab7848" onclick="selectRider('face',5,this)" title="Mittel-dunkel"></button>
+                            <button class="char-sw" style="background:#8b6040" onclick="selectRider('face',6,this)" title="Dunkel"></button>
+                            <button class="char-sw" style="background:#5c3818" onclick="selectRider('face',7,this)" title="Sehr dunkel"></button>
+                        </div>
+                    </div>
+                    <div class="char-row">
+                        <span class="char-label">Oberteil</span>
+                        <div class="char-opts" id="shirtOpts">
+                            <button class="char-sw selected" style="background:#d92525" onclick="selectRider('shirt',0,this)"></button>
+                            <button class="char-sw" style="background:#3373d9" onclick="selectRider('shirt',1,this)"></button>
+                            <button class="char-sw" style="background:#25b840" onclick="selectRider('shirt',2,this)"></button>
+                            <button class="char-sw" style="background:#f2d018" onclick="selectRider('shirt',3,this)"></button>
+                            <button class="char-sw" style="background:#a62ed9" onclick="selectRider('shirt',4,this)"></button>
+                            <button class="char-sw" style="background:#eaeaea" onclick="selectRider('shirt',5,this)"></button>
+                            <button class="char-sw" style="background:#e87820" onclick="selectRider('shirt',6,this)"></button>
+                            <button class="char-sw" style="background:#15c8c8" onclick="selectRider('shirt',7,this)"></button>
+                            <button class="char-sw" style="background:#e82888" onclick="selectRider('shirt',8,this)"></button>
+                            <button class="char-sw" style="background:#333333" onclick="selectRider('shirt',9,this)"></button>
+                        </div>
+                    </div>
+                    <div class="char-row">
+                        <span class="char-label">Hose</span>
+                        <div class="char-opts" id="pantsOpts">
+                            <button class="char-sw selected" style="background:#222228" onclick="selectRider('pants',0,this)"></button>
+                            <button class="char-sw" style="background:#263d80" onclick="selectRider('pants',1,this)"></button>
+                            <button class="char-sw" style="background:#6b472e" onclick="selectRider('pants',2,this)"></button>
+                            <button class="char-sw" style="background:#8c8c94" onclick="selectRider('pants',3,this)"></button>
+                            <button class="char-sw" style="background:#3d6e2a" onclick="selectRider('pants',4,this)"></button>
+                            <button class="char-sw" style="background:#800020" onclick="selectRider('pants',5,this)"></button>
+                        </div>
+                    </div>
                 </div>
+
+                <!-- Start -->
+                <button type="button" id="startBtn" disabled onclick="beginRace()">Pferd wählen…</button>
             </div>
+
         </div>
 
-        <button type="button" id="startBtn" disabled onclick="beginRace()">Pferd wählen...</button>
-
-        <!-- Persönliche Bestenliste -->
+        <!-- Bestenliste -->
         <div id="highscorePanel" style="display:none;">
-            <h3>🏆 BESTZEITEN</h3>
+            <h3>🏆 Bestzeiten</h3>
             <table id="highscoreTable">
                 <thead>
                     <tr>
-                        <th style="text-align:left; padding:3px 8px;">#</th>
-                        <th style="text-align:left; padding:3px 8px;">Name</th>
-                        <th style="text-align:left; padding:3px 8px;">Pferd</th>
-                        <th style="text-align:right; padding:3px 8px;">Zeit</th>
-                        <th style="text-align:right; padding:3px 8px;">Runde 1</th>
-                        <th style="text-align:right; padding:3px 8px;">Runde 2</th>
+                        <th style="text-align:left">#</th>
+                        <th style="text-align:left">Name</th>
+                        <th style="text-align:left">Pferd</th>
+                        <th style="text-align:right">Zeit</th>
+                        <th style="text-align:right">Runde 1</th>
+                        <th style="text-align:right">Runde 2</th>
                     </tr>
                 </thead>
                 <tbody id="highscoreBody"></tbody>
             </table>
         </div>
+
     </div>
 
     <script>
@@ -139,12 +182,12 @@
             tbody.innerHTML = list.map((e, i) => {
                 const isNew = (Date.now() - (e.savedAt || 0)) < 3000;
                 return `<tr style="${isNew ? 'color:#ffd700;' : ''}">
-                    <td style="padding:4px 8px;">${medals[i] ?? (i+1)+'.'}</td>
-                    <td style="padding:4px 8px;">${e.name}</td>
-                    <td style="padding:4px 8px;">${LABELS[e.horse] ?? e.horse}</td>
-                    <td style="padding:4px 8px; text-align:right; font-weight:bold;">${fmtTime(e.time)}</td>
-                    <td style="padding:4px 8px; text-align:right; color:#888;">${fmtTime(e.laps[0])}</td>
-                    <td style="padding:4px 8px; text-align:right; color:#888;">${fmtTime(e.laps[1])}</td>
+                    <td style="padding:5px 10px">${medals[i] ?? (i+1)+'.'}</td>
+                    <td style="padding:5px 10px">${e.name}</td>
+                    <td style="padding:5px 10px">${LABELS[e.horse] ?? e.horse}</td>
+                    <td style="padding:5px 10px;text-align:right;font-weight:bold">${fmtTime(e.time)}</td>
+                    <td style="padding:5px 10px;text-align:right;color:#667">${fmtTime(e.laps[0])}</td>
+                    <td style="padding:5px 10px;text-align:right;color:#667">${fmtTime(e.laps[1])}</td>
                 </tr>`;
             }).join('');
             panel.style.display = 'block';
@@ -152,11 +195,11 @@
 
         // ── Auswahl-Logik ────────────────────────────────────────────────────────
         let _selectedHorseType = null;
-        let _riderConfig = { face: 0, shirt: 0, pants: 0 };
+        let _riderConfig = { helmet: 0, face: 0, shirt: 0, pants: 0 };
 
         function selectRider(part, index, el) {
             _riderConfig[part] = index;
-            const groupId = { face: 'faceOpts', shirt: 'shirtOpts', pants: 'pantsOpts' }[part];
+            const groupId = { helmet: 'helmetOpts', face: 'faceOpts', shirt: 'shirtOpts', pants: 'pantsOpts' }[part];
             document.querySelectorAll('#' + groupId + ' .char-sw').forEach(b => b.classList.remove('selected'));
             el.classList.add('selected');
         }
@@ -188,22 +231,16 @@
             if (!raw) return;
             let sel;
             try { sel = JSON.parse(raw); } catch { return; }
-
-            // Name vorbelegen
             if (sel.playerName) {
                 const nameEl = document.getElementById('playerName');
                 if (nameEl) nameEl.value = sel.playerName;
             }
-
-            // Pferd vorauswählen
             if (sel.horseType) {
                 const card = document.querySelector(`.horse-card[onclick*="'${sel.horseType}'"]`);
                 if (card) selectHorse(sel.horseType, card);
             }
-
-            // Reiter-Aussehen wiederherstellen
             if (sel.riderConfig) {
-                const parts = { face: 'faceOpts', shirt: 'shirtOpts', pants: 'pantsOpts' };
+                const parts = { helmet: 'helmetOpts', face: 'faceOpts', shirt: 'shirtOpts', pants: 'pantsOpts' };
                 for (const [part, groupId] of Object.entries(parts)) {
                     const idx = sel.riderConfig[part];
                     if (idx == null) continue;

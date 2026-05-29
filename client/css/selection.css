@@ -2,7 +2,7 @@
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-    background: #0d1117;
+    background: #0a0d16;
     font-family: 'Segoe UI', sans-serif;
     color: #fff;
     min-height: 100vh;
@@ -12,88 +12,230 @@ body {
     overflow-y: auto;
 }
 
-/* ── Auswahl-Container ── */
+/* ── Haupt-Container ── */
 #selectionScreen {
+    width: 100%;
+    max-width: 920px;
+    padding: 36px 20px 48px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    padding: 40px 20px;
+    gap: 28px;
+}
+
+/* ── Header ── */
+.sel-header {
+    text-align: center;
+}
+.sel-header h1 {
+    font-size: 32px;
+    color: #ffd700;
+    letter-spacing: 2px;
+    text-shadow: 0 0 30px rgba(255,215,0,0.3);
+    margin-bottom: 4px;
+}
+.sel-header p {
+    color: #556;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+/* ── Zwei-Spalten-Layout ── */
+.sel-main {
+    display: flex;
+    gap: 20px;
     width: 100%;
-    min-height: 100vh;
+    align-items: stretch;
 }
 
-#selectionScreen h1 { font-size: 28px; color: #ffd700; margin-bottom: 6px; letter-spacing: 1px; }
-#selectionScreen > p { color: #888; font-size: 13px; margin-bottom: 28px; }
-
-/* ── Name-Input ── */
-#playerName {
-    background: #1a1f2e;
-    border: 2px solid rgba(255,255,255,0.15);
-    border-radius: 8px; color: #fff; font-size: 14px;
-    padding: 7px 12px; outline: none; width: 160px;
-    font-family: 'Segoe UI', sans-serif;
-    transition: border-color .15s;
+/* ── Panel (beide Seiten) ── */
+.sel-panel {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 18px;
+    padding: 24px 22px;
+    backdrop-filter: blur(12px);
+    flex: 1;
 }
-#playerName:focus { border-color: rgba(255,215,0,0.4); }
 
-/* ── Pferde-Auswahl ── */
-.horse-grid { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+.panel-title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #d8dff0;
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+/* ── Pferde-Grid (2×2) ── */
+.horse-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
 
 .horse-card {
     appearance: none; -webkit-appearance: none;
-    font-family: 'Segoe UI', sans-serif; color: #fff; text-align: left;
-    background: rgba(255,255,255,0.05); border: 2px solid rgba(255,255,255,0.1);
-    border-radius: 14px; padding: 20px 18px; width: 170px; cursor: pointer;
-    transition: transform .15s, border-color .15s, box-shadow .15s;
+    font-family: 'Segoe UI', sans-serif;
+    color: #fff; text-align: left;
+    background: rgba(255,255,255,0.04);
+    border: 1.5px solid rgba(255,255,255,0.09);
+    border-radius: 12px;
+    padding: 14px 14px;
+    cursor: pointer;
+    transition: transform .15s, border-color .15s, box-shadow .15s, background .15s;
 }
-.horse-card:hover    { transform: translateY(-4px); border-color: rgba(255,255,255,0.3); }
-.horse-card.selected { border-color: #ffd700; box-shadow: 0 0 20px rgba(255,215,0,0.4); transform: translateY(-4px); }
+.horse-card:hover {
+    transform: translateY(-3px);
+    background: rgba(255,255,255,0.07);
+    border-color: rgba(255,255,255,0.22);
+}
+.horse-card.selected {
+    border-color: #ffd700;
+    background: rgba(255,215,0,0.07);
+    box-shadow: 0 0 18px rgba(255,215,0,0.25);
+    transform: translateY(-3px);
+}
 
 .horse-icon {
-    width: 100%; height: 70px; border-radius: 10px; margin-bottom: 12px;
-    display: flex; align-items: center; justify-content: center; font-size: 36px;
+    width: 100%; height: 56px; border-radius: 8px;
+    margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px;
 }
-.horse-card h3    { font-size: 15px; margin-bottom: 4px; }
-.horse-card small { color: #888; font-size: 11px; display: block; margin-bottom: 12px; }
+.horse-card h3    { font-size: 14px; margin-bottom: 3px; }
+.horse-card small { color: #667; font-size: 10px; display: block; margin-bottom: 10px; line-height: 1.4; }
 
-.stat-row   { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; font-size: 11px; color: #aaa; }
-.stat-label { width: 52px; flex-shrink: 0; }
-.stat-track { flex: 1; background: #222; border-radius: 3px; height: 5px; }
-.stat-fill  { height: 5px; border-radius: 3px; }
+.stat-row   { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 10px; color: #778; }
+.stat-label { width: 44px; flex-shrink: 0; }
+.stat-track { flex: 1; background: rgba(255,255,255,0.07); border-radius: 3px; height: 4px; }
+.stat-fill  { height: 4px; border-radius: 3px; }
+
+/* ── Rechtes Panel ── */
+.sel-right { max-width: 340px; display: flex; flex-direction: column; gap: 0; }
+
+/* ── Name ── */
+.name-block {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+.name-block label {
+    color: #778;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+#playerName {
+    background: rgba(255,255,255,0.06);
+    border: 1.5px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    color: #fff; font-size: 14px;
+    padding: 7px 11px; outline: none;
+    width: 100%;
+    font-family: 'Segoe UI', sans-serif;
+    transition: border-color .15s, background .15s;
+}
+#playerName:focus {
+    border-color: rgba(255,215,0,0.45);
+    background: rgba(255,255,255,0.09);
+}
+
+/* ── Trennlinie ── */
+.sel-divider {
+    height: 1px;
+    background: rgba(255,255,255,0.07);
+    margin: 16px 0;
+}
 
 /* ── Charakter-Anpassung ── */
-.char-section { margin-top: 22px; text-align: center; }
-.char-row   { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; justify-content: center; }
-.char-label { color: #aaa; font-size: 12px; width: 72px; text-align: right; flex-shrink: 0; }
-.char-opts  { display: flex; gap: 8px; }
+.char-section { display: flex; flex-direction: column; gap: 9px; }
+
+.char-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.char-label {
+    color: #778;
+    font-size: 11px;
+    width: 66px;
+    flex-shrink: 0;
+    text-align: right;
+    letter-spacing: 0.3px;
+}
+.char-opts { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .char-sw {
-    width: 30px; height: 30px; border-radius: 50%;
+    width: 28px; height: 28px; border-radius: 50%;
     border: 2px solid transparent; cursor: pointer; padding: 0;
     transition: transform .12s, border-color .12s, box-shadow .12s;
 }
-.char-sw:hover    { transform: scale(1.15); }
-.char-sw.selected { border-color: #ffd700; box-shadow: 0 0 8px rgba(255,215,0,0.55); transform: scale(1.12); }
+.char-sw:hover    { transform: scale(1.18); }
+.char-sw.selected { border-color: #ffd700; box-shadow: 0 0 7px rgba(255,215,0,0.55); transform: scale(1.12); }
+
+/* Helm-Buttons */
+.char-hat {
+    background: rgba(255,255,255,0.07);
+    font-size: 15px; line-height: 26px;
+    width: 32px; height: 32px;
+}
 
 /* ── Start-Button ── */
 #startBtn {
-    margin-top: 28px; padding: 14px 48px; font-size: 16px; font-weight: bold;
-    background: #ffd700; color: #111; border: none; border-radius: 30px; cursor: pointer;
-    transition: opacity .2s, transform .1s; letter-spacing: 0.5px;
+    margin-top: 24px;
+    width: 100%;
+    padding: 13px 0;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    background: linear-gradient(135deg, #ffd700 0%, #ffb300 100%);
+    color: #111;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: opacity .2s, transform .1s, box-shadow .2s;
+    box-shadow: 0 4px 20px rgba(255,215,0,0.25);
 }
-#startBtn:disabled             { opacity: 0.35; cursor: default; }
-#startBtn:not(:disabled):hover { transform: scale(1.05); }
+#startBtn:disabled {
+    opacity: 0.3;
+    cursor: default;
+    box-shadow: none;
+}
+#startBtn:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 28px rgba(255,215,0,0.40);
+}
 
 /* ── Bestenliste ── */
 #highscorePanel {
-    margin-top: 28px;
-    min-width: 380px;
+    width: 100%;
     background: rgba(255,255,255,0.03);
     border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 12px;
-    padding: 16px 20px;
+    border-radius: 14px;
+    padding: 18px 22px;
 }
-#highscorePanel h3 { color: #ffd700; font-size: 13px; margin-bottom: 8px; letter-spacing: 1px; }
-#highscoreTable    { width: 100%; border-collapse: collapse; font-size: 12px; color: #ccc; }
-#highscoreTable thead tr { color: #666; border-bottom: 1px solid #333; }
+#highscorePanel h3 {
+    color: #ffd700;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+#highscoreTable    { width: 100%; border-collapse: collapse; font-size: 12px; color: #bbb; }
+#highscoreTable thead tr { color: #556; }
+#highscoreTable thead th { padding-bottom: 6px; }
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+    .sel-main { flex-direction: column; }
+    .sel-right { max-width: 100%; }
+    .horse-grid { grid-template-columns: 1fr 1fr; }
+}

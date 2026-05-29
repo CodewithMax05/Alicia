@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════════════════════════════════════
-   LOBBY BROWSER  (Vorraum — vor dem Beitreten)
+   LOBBY BROWSER
    ══════════════════════════════════════════════════════════════════════════════ */
 
 #lobbyBrowser {
@@ -10,215 +10,352 @@
 }
 
 #lobbyBrowserBox {
-    display: flex; flex-direction: column; gap: 20px;
-    max-width: 680px; width: 94%;
+    display: flex; flex-direction: column; gap: 22px;
+    max-width: 780px; width: 96%;
     background: rgba(255,255,255,0.025);
-    border: 1px solid rgba(255,255,255,0.09);
-    border-radius: 22px; padding: 36px 30px 30px;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 22px; padding: 32px 28px 26px;
     animation: overlayIn 0.4s cubic-bezier(0.2,0,0.2,1);
 }
 
+/* ── Header ── */
+#lbHeader { text-align: center; }
 #lbTitle {
-    font-size: 28px; font-weight: 900; color: #ffd700; text-align: center;
-    letter-spacing: 2px; text-shadow: 0 0 36px rgba(255,215,0,0.45);
+    font-size: 26px; font-weight: 900; color: #ffd700;
+    letter-spacing: 2px; text-shadow: 0 0 36px rgba(255,215,0,0.4);
+    margin-bottom: 4px;
 }
-#lbSubtitle { font-size: 13px; color: #666; text-align: center; margin-top: -12px; }
+#lbSubtitle { font-size: 12px; color: #556; letter-spacing: 1px; }
 
-/* Fehler-Banner */
+/* ── Fehler ── */
 #lobbyBrowserError {
-    background: rgba(220,50,50,0.15); border: 1px solid rgba(220,50,50,0.35);
+    background: rgba(220,50,50,0.12); border: 1px solid rgba(220,50,50,0.3);
     color: #ff7070; border-radius: 8px; padding: 9px 14px; font-size: 13px;
 }
 
-/* Abschnitts-Kopf */
-.lb-section-head {
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1.4px;
-    margin-bottom: 10px;
+/* ── Zwei-Spalten-Layout ── */
+#lbColumns {
+    display: flex; gap: 16px; align-items: flex-start;
 }
-#lbRefreshHint { font-size: 10px; color: #383840; font-style: italic; text-transform: none; }
 
-/* Lobby-Liste */
-#lobbyList { display: flex; flex-direction: column; gap: 6px; min-height: 48px; }
+.lb-col {
+    flex: 1; display: flex; flex-direction: column; gap: 10px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 14px; padding: 18px 16px;
+    min-height: 200px;
+}
+
+.lb-col-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; font-weight: 700; color: #c8d0e0;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+#lbRefreshHint { font-size: 10px; color: #3a3a50; font-style: italic; font-weight: 400; }
+
+/* ── Lobby-Liste ── */
+#lobbyList { display: flex; flex-direction: column; gap: 6px; min-height: 60px; }
 
 .lb-empty {
-    color: #444; font-size: 13px; text-align: center;
-    padding: 18px 0; font-style: italic;
+    color: #3a3a55; font-size: 12px; text-align: center;
+    padding: 20px 0; font-style: italic;
 }
 
 .lb-row {
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; gap: 8px;
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 10px; padding: 10px 14px;
+    border-radius: 10px; padding: 9px 12px;
     transition: border-color .15s, background .15s;
 }
 .lb-row:hover { border-color: rgba(255,215,0,0.18); background: rgba(255,215,0,0.03); }
 
-.lb-name    { flex: 1; font-size: 14px; font-weight: bold; color: #ddd; }
-.lb-players { font-size: 12px; color: #888; min-width: 36px; text-align: center; }
+.lb-name    { flex: 1; font-size: 13px; font-weight: 600; color: #ddd; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-players { font-size: 11px; color: #778; min-width: 30px; text-align: center; flex-shrink: 0; }
 
 .lb-state {
-    font-size: 11px; font-weight: bold; padding: 3px 9px;
-    border-radius: 20px; min-width: 72px; text-align: center;
+    font-size: 10px; font-weight: 700; padding: 3px 8px;
+    border-radius: 20px; text-align: center; flex-shrink: 0;
 }
-.lb-state-waiting   { background: rgba(100,200,100,0.12); color: #6ec86e; }
-.lb-state-lobby     { background: rgba(100,160,255,0.12); color: #7ab4ff; }
-.lb-state-countdown { background: rgba(255,200,50,0.14);  color: #ffd060; }
-.lb-state-racing    { background: rgba(255,120,50,0.14);  color: #ff8855; }
-.lb-state-results   { background: rgba(160,100,255,0.12); color: #c088ff; }
+.lb-state-waiting   { background: rgba(100,200,100,0.10); color: #6ec86e; }
+.lb-state-lobby     { background: rgba(100,160,255,0.10); color: #7ab4ff; }
+.lb-state-countdown { background: rgba(255,200,50,0.12);  color: #ffd060; }
+.lb-state-racing    { background: rgba(255,120,50,0.12);  color: #ff8855; }
+.lb-state-results   { background: rgba(160,100,255,0.10); color: #c088ff; }
 
 .lb-join-btn {
-    background: rgba(255,215,0,0.13); color: #ffd700;
-    border: 1px solid rgba(255,215,0,0.3); border-radius: 8px;
-    padding: 6px 16px; font-size: 13px; font-weight: bold;
+    background: rgba(255,215,0,0.10); color: #ffd700;
+    border: 1px solid rgba(255,215,0,0.25); border-radius: 7px;
+    padding: 5px 12px; font-size: 12px; font-weight: 700;
     cursor: pointer; transition: background .15s, transform .1s;
-    white-space: nowrap;
+    white-space: nowrap; flex-shrink: 0;
 }
-.lb-join-btn:hover:not(:disabled) { background: rgba(255,215,0,0.26); transform: scale(1.04); }
-.lb-join-btn:disabled { opacity: 0.35; cursor: default; }
+.lb-join-btn:hover:not(:disabled) { background: rgba(255,215,0,0.24); transform: scale(1.04); }
+.lb-join-btn:disabled { opacity: 0.3; cursor: default; }
 
-/* Erstellen-Zeile */
-#lbSection { border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 18px; }
+/* ── Erstellen-Formular ── */
+.lb-form { display: flex; flex-direction: column; gap: 10px; }
 
-#lbCreateRow {
-    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-}
+.lb-form input[type=text],
 #newLobbyName {
-    flex: 1; min-width: 160px;
+    width: 100%;
     background: rgba(255,255,255,0.07);
     border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
-    color: #fff; font-size: 13px; padding: 8px 12px; outline: none;
+    color: #fff; font-size: 13px; padding: 8px 11px; outline: none;
     font-family: 'Segoe UI', sans-serif;
     transition: border-color .15s;
 }
+.lb-form input[type=text]:focus,
 #newLobbyName:focus { border-color: rgba(255,215,0,0.4); }
 
-.lb-pub-label {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 13px; color: #888; cursor: pointer; white-space: nowrap;
-}
-.lb-pub-label input[type=checkbox] { accent-color: #ffd700; width: 15px; height: 15px; cursor: pointer; }
+.lb-form-row { display: flex; gap: 10px; }
 
-#newLobbyLaps {
+.lb-form-group {
+    flex: 1; display: flex; flex-direction: column; gap: 5px;
+}
+.lb-form-group label {
+    font-size: 10px; color: #667; text-transform: uppercase; letter-spacing: 0.8px;
+}
+
+#newLobbyLaps,
+#newLobbyMaxPlayers {
     background: rgba(255,255,255,0.07);
     border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
-    color: #ccc; font-size: 13px; padding: 8px 10px; outline: none;
-    font-family: 'Segoe UI', sans-serif; cursor: pointer;
+    color: #ccc; font-size: 13px; padding: 7px 10px; outline: none;
+    font-family: 'Segoe UI', sans-serif; cursor: pointer; width: 100%;
     transition: border-color .15s;
 }
-#newLobbyLaps:focus { border-color: rgba(255,215,0,0.4); }
-#newLobbyLaps option { background: #1a1a2e; color: #ccc; }
+#newLobbyLaps:focus,
+#newLobbyMaxPlayers:focus { border-color: rgba(255,215,0,0.4); }
+#newLobbyLaps option,
+#newLobbyMaxPlayers option { background: #1a1a2e; color: #ccc; }
+
+.lb-pub-label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: #889; cursor: pointer;
+}
+.lb-pub-label input[type=checkbox] { accent-color: #ffd700; width: 14px; height: 14px; cursor: pointer; }
 
 #lbCreateBtn {
-    background: #ffd700; color: #111;
-    border: none; border-radius: 8px;
-    padding: 8px 20px; font-size: 13px; font-weight: bold;
+    width: 100%;
+    background: linear-gradient(135deg, #ffd700, #ffb300);
+    color: #111; border: none; border-radius: 9px;
+    padding: 10px 0; font-size: 13px; font-weight: 700;
     cursor: pointer; transition: opacity .15s, transform .1s;
-    white-space: nowrap;
+    box-shadow: 0 3px 14px rgba(255,215,0,0.20);
+    margin-top: 2px;
 }
-#lbCreateBtn:hover { opacity: 0.88; transform: scale(1.04); }
+#lbCreateBtn:hover { opacity: 0.88; transform: translateY(-1px); }
+
+/* ── Code-Beitritt (untere Leiste) ── */
+#lbCodeRow {
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 12px; padding: 12px 16px;
+}
+.lb-code-label { font-size: 12px; color: #778; white-space: nowrap; flex-shrink: 0; }
+#lbCodeInput {
+    flex: 1;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
+    color: #fff; font-size: 13px; padding: 7px 11px; outline: none;
+    font-family: 'Segoe UI', sans-serif; letter-spacing: 1px;
+    transition: border-color .15s;
+}
+#lbCodeInput:focus { border-color: rgba(255,215,0,0.4); }
+#lbCodeInput::placeholder { letter-spacing: 0; }
+#lbCodeBtn {
+    background: rgba(255,215,0,0.10); color: #ffd700;
+    border: 1px solid rgba(255,215,0,0.25); border-radius: 8px;
+    padding: 7px 16px; font-size: 13px; font-weight: 700;
+    cursor: pointer; transition: background .15s;
+    white-space: nowrap; flex-shrink: 0;
+}
+#lbCodeBtn:hover { background: rgba(255,215,0,0.22); }
 
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   IN-LOBBY PANEL  (nach dem Beitreten, vor dem Rennen)
+   IN-LOBBY PANEL
    ══════════════════════════════════════════════════════════════════════════════ */
 
-/* ── Lobby-Panel ── */
 #lobbyPanel {
     position: absolute; inset: 0; z-index: 50;
     display: none; align-items: center; justify-content: center;
-    background: linear-gradient(160deg, rgba(5,8,20,0.96) 0%, rgba(14,10,32,0.97) 100%);
+    background: linear-gradient(160deg, rgba(5,8,20,0.97) 0%, rgba(14,10,32,0.98) 100%);
     backdrop-filter: blur(8px);
 }
 
 #lobbyBox {
-    display: flex; flex-direction: column; align-items: center;
-    gap: 16px; max-width: 700px; width: 94%;
+    display: flex; flex-direction: column;
+    gap: 0;
+    max-width: 760px; width: 96%;
     background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 20px; padding: 32px 28px 28px;
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 20px;
+    overflow: hidden;
     animation: overlayIn 0.45s cubic-bezier(0.2,0,0.2,1);
 }
 
+/* ── Lobby-Header ── */
+#lobbyHeader {
+    text-align: center;
+    padding: 24px 26px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.02);
+}
+
 #lobbyTitle {
-    font-size: 26px; font-weight: 900; color: #ffd700;
-    letter-spacing: 2px; text-shadow: 0 0 30px rgba(255,215,0,0.4);
+    font-size: 20px; font-weight: 900; color: #ffd700;
+    letter-spacing: 2px; text-shadow: 0 0 24px rgba(255,215,0,0.35);
+    margin-bottom: 6px;
 }
 
-#lobbySubtitle      { font-size: 14px; color: #888; }
-#lobbySubtitle span { color: #ccc; font-weight: bold; }
-
-#lobbyMain { display: flex; gap: 18px; width: 100%; }
-
-/* ── Spielerliste ── */
-#lobbyPlayers { flex: 1; min-width: 0; }
-
-#lobbyPlayers h3,
-#lobbyChat h3 {
-    font-size: 11px; color: #666; letter-spacing: 1.5px;
-    text-transform: uppercase; margin-bottom: 10px;
+/* Bereit-Anzeige als Badge */
+#lobbySubtitle {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 12px; color: #667;
+}
+#lobbySubtitle span {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 20px; padding: 3px 12px;
+    color: #bbb; font-weight: 700; font-size: 13px;
 }
 
-#lobbyPlayerList { display: flex; flex-direction: column; gap: 6px; }
+/* Raum-Code */
+#lobbyCodeBox {
+    margin-top: 10px;
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(255,215,0,0.06);
+    border: 1px solid rgba(255,215,0,0.18);
+    border-radius: 20px; padding: 5px 14px;
+    font-size: 11px; color: #889;
+}
+.lobby-code-val {
+    font-family: 'Courier New', monospace; font-size: 14px;
+    font-weight: 900; color: #ffd700; letter-spacing: 3px;
+}
+.lobby-copy-btn {
+    background: none; border: none; cursor: pointer;
+    font-size: 13px; padding: 0; opacity: 0.65;
+    transition: opacity .15s; line-height: 1;
+}
+.lobby-copy-btn:hover { opacity: 1; }
+
+/* ── Haupt-Bereich (Spieler + Chat) ── */
+#lobbyMain {
+    display: flex;
+    height: 260px; /* feste Gesamthöhe */
+}
+
+/* ── Spieler-Panel ── */
+#lobbyPlayers {
+    width: 42%; flex-shrink: 0;
+    display: flex; flex-direction: column;
+    border-right: 1px solid rgba(255,255,255,0.07);
+    padding: 16px;
+    overflow: hidden;
+}
+
+#lobbyPlayers h3 {
+    font-size: 10px; color: #556; letter-spacing: 1.8px;
+    text-transform: uppercase; font-weight: 700;
+    margin-bottom: 10px; flex-shrink: 0;
+}
+
+#lobbyPlayerList {
+    flex: 1;
+    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 5px;
+}
+#lobbyPlayerList::-webkit-scrollbar       { width: 3px; }
+#lobbyPlayerList::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
 
 .lobby-player {
     display: flex; align-items: center; gap: 8px;
     background: rgba(255,255,255,0.04);
-    border-radius: 8px; padding: 7px 12px;
+    border-radius: 8px; padding: 8px 11px;
     font-size: 13px; color: #ccc;
     border: 1px solid transparent;
-    transition: border-color .2s;
+    transition: border-color .2s, background .2s;
+    flex-shrink: 0;
 }
 .lobby-player.lobby-me {
-    border-color: rgba(255,215,0,0.2);
-    background: rgba(255,215,0,0.04);
+    border-color: rgba(255,215,0,0.20);
+    background: rgba(255,215,0,0.05);
 }
-.lobby-ready-dot { font-size: 10px; flex-shrink: 0; }
-.lobby-pname     { flex: 1; font-weight: bold; }
-.lobby-horse     { font-size: 12px; color: #888; }
-.lobby-status    { font-size: 11px; color: #555; margin-left: 4px; }
+.lobby-ready-dot { font-size: 9px; flex-shrink: 0; }
+.lobby-pname     { flex: 1; font-weight: 600; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lobby-horse     { font-size: 11px; color: #667; flex-shrink: 0; }
+.lobby-status    { font-size: 10px; flex-shrink: 0;
+    padding: 2px 7px; border-radius: 10px; }
+.lobby-status-ready   { color: #4ecf6e; background: rgba(78,207,110,0.10); }
+.lobby-status-waiting { color: #556; }
 
-/* ── Chat ── */
-#lobbyChat { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+/* ── Chat-Panel ── */
+#lobbyChat {
+    flex: 1;
+    display: flex; flex-direction: column;
+    padding: 16px;
+    overflow: hidden;
+}
+
+#lobbyChat h3 {
+    font-size: 10px; color: #556; letter-spacing: 1.8px;
+    text-transform: uppercase; font-weight: 700;
+    margin-bottom: 10px; flex-shrink: 0;
+}
 
 #chatMessages {
-    flex: 1; height: 180px; overflow-y: auto;
-    background: rgba(0,0,0,0.3); border-radius: 8px;
-    padding: 10px 12px; font-size: 12px; color: #aaa;
-    display: flex; flex-direction: column; gap: 4px;
-    border: 1px solid rgba(255,255,255,0.06);
+    flex: 1;
+    overflow-y: auto;
+    background: rgba(0,0,0,0.20);
+    border-radius: 9px;
+    padding: 10px 12px;
+    font-size: 12px; color: #99a;
+    display: flex; flex-direction: column; gap: 3px;
+    border: 1px solid rgba(255,255,255,0.05);
+    min-height: 0; /* wichtig damit flex-1 korrekt funktioniert */
 }
-#chatMessages::-webkit-scrollbar       { width: 4px; }
-#chatMessages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
-.chat-msg    { line-height: 1.5; word-break: break-word; }
-.chat-sender { color: #ffd700; font-weight: bold; }
+#chatMessages::-webkit-scrollbar       { width: 3px; }
+#chatMessages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+.chat-msg    { line-height: 1.55; word-break: break-word; flex-shrink: 0; }
+.chat-sender { color: #ffd700; font-weight: 700; }
 
-#chatInputRow { display: flex; gap: 8px; margin-top: 8px; }
-
+#chatInputRow {
+    display: flex; gap: 7px;
+    margin-top: 8px; flex-shrink: 0;
+}
 #chatInput {
     flex: 1;
     background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
-    color: #fff; font-size: 13px; padding: 7px 12px; outline: none;
+    border: 1px solid rgba(255,255,255,0.10); border-radius: 8px;
+    color: #fff; font-size: 13px; padding: 7px 11px; outline: none;
     font-family: 'Segoe UI', sans-serif;
     transition: border-color .15s;
 }
-#chatInput:focus { border-color: rgba(255,215,0,0.4); }
-
+#chatInput:focus { border-color: rgba(255,215,0,0.40); }
 #chatSendBtn {
-    background: rgba(255,215,0,0.15); border: 1px solid rgba(255,215,0,0.3);
+    background: rgba(255,215,0,0.10); border: 1px solid rgba(255,215,0,0.22);
     color: #ffd700; border-radius: 8px; padding: 7px 14px;
-    cursor: pointer; font-size: 14px; transition: background .15s;
+    cursor: pointer; font-size: 14px; transition: background .15s; flex-shrink: 0;
 }
-#chatSendBtn:hover { background: rgba(255,215,0,0.28); }
+#chatSendBtn:hover { background: rgba(255,215,0,0.24); }
 
-/* ── Bereit-Button ── */
+/* ── Bereit-Button (untere Leiste) ── */
 #lobbyReadyBtn {
-    padding: 12px 48px; font-size: 15px; font-weight: bold;
-    background: rgba(255,215,0,0.12); color: #ffd700;
-    border: 2px solid rgba(255,215,0,0.35); border-radius: 30px;
-    cursor: pointer; letter-spacing: 0.5px;
-    transition: background .2s, transform .1s, border-color .2s;
+    width: 100%; padding: 14px;
+    font-size: 15px; font-weight: 700; letter-spacing: 0.5px;
+    background: rgba(255,255,255,0.04);
+    color: #ffd700;
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.07);
+    border-radius: 0 0 20px 20px;
+    cursor: pointer;
+    transition: background .2s, color .2s;
 }
-#lobbyReadyBtn:hover { background: rgba(255,215,0,0.22); transform: scale(1.03); }
+#lobbyReadyBtn:hover {
+    background: rgba(255,215,0,0.12);
+}

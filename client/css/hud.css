@@ -14,6 +14,10 @@ body { background: #0d1117; overflow: hidden; font-family: 'Segoe UI', sans-seri
     background: rgba(255, 235, 0, 0.52);
     transition: background 0s;
 }
+#screenFlash.hit {
+    background: rgba(200, 15, 15, 0.38);
+    transition: background 0s;
+}
 
 /* ── Gemeinsames Panel-Styling ── */
 .hud-panel {

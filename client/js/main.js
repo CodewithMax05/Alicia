@@ -170,6 +170,23 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         Network.sendJoinLobby(lobbyId, horseType, playerName, riderConfig);
     };
 
+    window.joinByCode = function() {
+        const input = document.getElementById('lbCodeInput');
+        const code  = input?.value.trim();
+        if (!code) return;
+        window.joinLobbyById(code);
+        if (input) input.value = '';
+    };
+
+    window.copyLobbyCode = function() {
+        const val = document.getElementById('lobbyCodeValue')?.textContent;
+        if (!val) return;
+        navigator.clipboard.writeText(val).then(() => {
+            const btn = document.querySelector('.lobby-copy-btn');
+            if (btn) { btn.textContent = '✓'; setTimeout(() => btn.textContent = '📋', 1200); }
+        }).catch(() => {});
+    };
+
     function renderLobbyBrowser(lobbies) {
         if (_inLobby) return;
         show('lobbyBrowser');
@@ -231,13 +248,21 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
 
             // Hufschlag-Tempo an Geschwindigkeit anpassen
             Audio.setHoofSpeed(h.speed);
+            Audio.setJumping(h.jumpHeight > 0.15);
 
             // Sprung-Whoosh (steigende Flanke: jumpHeight geht von 0 auf >0)
             if (h.jumpHeight > 0.1 && prevJumpHeight <= 0.1) Audio.playJump();
             // Landung
             if (h.jumpHeight <= 0.1 && prevJumpHeight > 0.1) Audio.playLand();
-            // Treffer
-            if (h.penalized && !prevPenalized) Audio.playHit();
+            // Treffer — Sound + roter Screen-Flash
+            if (h.penalized && !prevPenalized) {
+                Audio.playHit();
+                const flashEl = document.getElementById('screenFlash');
+                if (flashEl) {
+                    flashEl.classList.add('hit');
+                    setTimeout(() => flashEl.classList.remove('hit'), 220);
+                }
+            }
             // Zieleinlauf
             if (h.finished && !prevFinished) {
                 const pos = state.finishOrder.indexOf(pid);
@@ -524,12 +549,21 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
                     const isMe    = h.id === pid;
                     const HORSE_LABELS = { blitz:'⚡', sturm:'🌪️', nebel:'🌫️', feuer:'🔥' };
                     return `<div class="lobby-player ${isMe ? 'lobby-me' : ''}">
-                        <span class="lobby-ready-dot" style="color:${isReady ? '#22ee55' : '#555'}">●</span>
-                        <span class="lobby-pname">${h.name || 'Fahrer'}${isMe ? ' (Du)' : ''}</span>
-                        <span class="lobby-horse">${HORSE_LABELS[h.horseType] || '🐴'} ${h.horseType || ''}</span>
-                        <span class="lobby-status">${isReady ? '✓ Bereit' : 'Wartet...'}</span>
+                        <span class="lobby-ready-dot" style="color:${isReady ? '#4ecf6e' : '#334'}">●</span>
+                        <span class="lobby-pname">${h.name || 'Fahrer'}${isMe ? ' 👤' : ''}</span>
+                        <span class="lobby-horse">${HORSE_LABELS[h.horseType] || '🐴'}</span>
+                        <span class="lobby-status ${isReady ? 'lobby-status-ready' : 'lobby-status-waiting'}">${isReady ? '✓ Bereit' : 'Wartet'}</span>
                     </div>`;
                 }).join('');
+            }
+
+            // Raum-Code anzeigen (Lobby-ID als kompakter Code)
+            const codeBox = document.getElementById('lobbyCodeBox');
+            const codeVal = document.getElementById('lobbyCodeValue');
+            if (codeBox && codeVal && state.lobbyId) {
+                const isPrivate = state.isPublic === false;
+                codeBox.style.display = isPrivate ? 'inline-flex' : 'none';
+                codeVal.textContent   = String(state.lobbyId).slice(0, 8).toUpperCase();
             }
 
             // Eigener Bereit-Button zurücksetzen wenn wir gerade in die Lobby kommen
