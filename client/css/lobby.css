@@ -286,13 +286,22 @@
     border-color: rgba(255,215,0,0.20);
     background: rgba(255,215,0,0.05);
 }
-.lobby-ready-dot { font-size: 9px; flex-shrink: 0; }
-.lobby-pname     { flex: 1; font-weight: 600; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lobby-horse     { font-size: 11px; color: #667; flex-shrink: 0; }
-.lobby-status    { font-size: 10px; flex-shrink: 0;
-    padding: 2px 7px; border-radius: 10px; }
+.lobby-ready-dot    { font-size: 9px; flex-shrink: 0; }
+.lobby-leader-crown { font-size: 11px; flex-shrink: 0; line-height: 1; }
+.lobby-pname        { flex: 1; font-weight: 600; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lobby-horse        { font-size: 11px; color: #667; flex-shrink: 0; }
+.lobby-status       { font-size: 10px; flex-shrink: 0; padding: 2px 7px; border-radius: 10px; }
 .lobby-status-ready   { color: #4ecf6e; background: rgba(78,207,110,0.10); }
 .lobby-status-waiting { color: #556; }
+.lobby-kick-btn {
+    flex-shrink: 0; margin-left: 4px;
+    background: rgba(220,60,60,0.12); color: #e06060;
+    border: 1px solid rgba(220,60,60,0.25); border-radius: 6px;
+    padding: 2px 7px; font-size: 11px; font-weight: 700;
+    cursor: pointer; line-height: 1.4;
+    transition: background .15s, transform .1s;
+}
+.lobby-kick-btn:hover { background: rgba(220,60,60,0.28); transform: scale(1.08); }
 
 /* ── Chat-Panel ── */
 #lobbyChat {
@@ -344,18 +353,39 @@
 }
 #chatSendBtn:hover { background: rgba(255,215,0,0.24); }
 
-/* ── Bereit-Button (untere Leiste) ── */
-#lobbyReadyBtn {
-    width: 100%; padding: 14px;
-    font-size: 15px; font-weight: 700; letter-spacing: 0.5px;
-    background: rgba(255,255,255,0.04);
-    color: #ffd700;
-    border: none;
+/* ── Footer: Ready + Start (untere Leiste) ── */
+#lobbyFooter {
+    display: flex;
     border-top: 1px solid rgba(255,255,255,0.07);
     border-radius: 0 0 20px 20px;
-    cursor: pointer;
-    transition: background .2s, color .2s;
+    overflow: hidden;
+}
+
+#lobbyReadyBtn,
+#lobbyStartBtn {
+    flex: 1; padding: 14px;
+    font-size: 15px; font-weight: 700; letter-spacing: 0.5px;
+    border: none; cursor: pointer;
+    transition: background .2s, color .2s, opacity .2s;
+}
+
+#lobbyReadyBtn {
+    background: rgba(255,255,255,0.04);
+    color: #ffd700;
+    border-right: 1px solid rgba(255,255,255,0.07);
 }
 #lobbyReadyBtn:hover {
     background: rgba(255,215,0,0.12);
+}
+
+#lobbyStartBtn {
+    background: rgba(78,207,110,0.08);
+    color: #4ecf6e;
+}
+#lobbyStartBtn:hover:not(:disabled) {
+    background: rgba(78,207,110,0.22);
+}
+#lobbyStartBtn:disabled {
+    opacity: 0.3;
+    cursor: default;
 }

@@ -117,13 +117,21 @@ class RaceManager {
     setReady(id, ready = true) {
         if (ready) this.readyPlayers.add(id);
         else        this.readyPlayers.delete(id);
-        // Start wenn alle Spieler bereit sind (funktioniert in Lobby und Ergebnis-Screen)
+    }
+
+    returnToLobby() {
+        if (this.state !== 'results') return;
+        this._startLobby();
+    }
+
+    tryStartGame() {
+        if (this.state !== 'lobby' && this.state !== 'results') return false;
         const allReady = this.horses.size > 0 &&
                          this.readyPlayers.size >= this.horses.size;
-        if (allReady && (this.state === 'lobby' || this.state === 'results')) {
-            clearInterval(this._lobbyTimer);
-            this._startCountdown();
-        }
+        if (!allReady) return false;
+        clearInterval(this._lobbyTimer);
+        this._startCountdown();
+        return true;
     }
 
     setInput(id, input) {
@@ -521,7 +529,7 @@ class RaceManager {
             totalLaps: this.totalLaps, obstacles: this.obstacles,
             powerups: this.powerups.filter(p => !p.collected),
             weatherPreset: this.weatherPreset,
-            readyPlayers:  [...this.readyPlayers],
+            readyPlayers: [...this.readyPlayers],
         };
     }
 }

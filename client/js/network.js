@@ -7,17 +7,15 @@ const Network = (() => {
     let onLobbyListCb = null;
     let onErrorCb     = null;
     let onInitCb      = null;
+    let onKickedCb    = null;
 
-    /**
-     * WebSocket-Verbindung aufbauen.
-     * Callbacks: { onState, onChat, onLobbyList, onError, onInit }
-     */
-    function connect(url, { onState, onChat, onLobbyList, onError, onInit } = {}) {
+    function connect(url, { onState, onChat, onLobbyList, onError, onInit, onKicked } = {}) {
         onStateCb     = onState     || null;
         onChatCb      = onChat      || null;
         onLobbyListCb = onLobbyList || null;
         onErrorCb     = onError     || null;
         onInitCb      = onInit      || null;
+        onKickedCb    = onKicked    || null;
 
         ws = new WebSocket(url);
 
@@ -48,25 +46,29 @@ const Network = (() => {
                 case 'error':
                     onErrorCb?.(msg);
                     break;
+                case 'kicked':
+                    onKickedCb?.();
+                    break;
             }
         };
     }
 
-    /** Neue öffentliche oder private Lobby erstellen und direkt beitreten. */
     function sendCreateLobby(lobbyName, isPublic, horseType, playerName, riderConfig, totalLaps) {
         _horseType = horseType;
         _send({ type: 'createLobby', lobbyName, isPublic, horseType, playerName, rider: riderConfig, totalLaps: totalLaps || 2 });
     }
 
-    /** Einer bestehenden Lobby beitreten. */
     function sendJoinLobby(lobbyId, horseType, playerName, riderConfig) {
         _horseType = horseType;
         _send({ type: 'joinLobby', lobbyId, horseType, playerName, rider: riderConfig });
     }
 
-    function sendInput(input)    { _send({ type: 'input', input }); }
-    function sendChat(message)   { _send({ type: 'chat',  message }); }
-    function sendReady(ready)    { _send({ type: 'ready', ready }); }
+    function sendInput(input)            { _send({ type: 'input',         input }); }
+    function sendChat(message)           { _send({ type: 'chat',          message }); }
+    function sendReady(ready)            { _send({ type: 'ready',         ready }); }
+    function sendStartGame()             { _send({ type: 'startGame' }); }
+    function sendReturnToLobby()         { _send({ type: 'returnToLobby' }); }
+    function sendKickPlayer(targetId)    { _send({ type: 'kickPlayer',    targetId }); }
 
     function getPlayerId()  { return playerId; }
     function getHorseType() { return _horseType; }
@@ -83,7 +85,7 @@ const Network = (() => {
     return {
         connect,
         sendCreateLobby, sendJoinLobby,
-        sendInput, sendChat, sendReady,
+        sendInput, sendChat, sendReady, sendStartGame, sendReturnToLobby, sendKickPlayer,
         getPlayerId, getHorseType,
     };
 })();

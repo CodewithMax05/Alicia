@@ -250,7 +250,19 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', () => { hsRender(); restoreLastSelection(); });
+        document.addEventListener('DOMContentLoaded', () => {
+            hsRender();
+            restoreLastSelection();
+            // Kicked-Hinweis anzeigen wenn man aus einer Lobby geflogen ist
+            if (sessionStorage.getItem('alicia_kicked')) {
+                sessionStorage.removeItem('alicia_kicked');
+                const banner = document.createElement('div');
+                banner.textContent = '⚠️ Du wurdest vom Leader aus der Lobby entfernt.';
+                banner.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(220,60,60,0.92);color:#fff;padding:12px 28px;border-radius:10px;font-size:14px;font-weight:700;z-index:999;box-shadow:0 4px 20px rgba(0,0,0,0.4)';
+                document.body.appendChild(banner);
+                setTimeout(() => banner.remove(), 4000);
+            }
+        });
     </script>
 </body>
 </html>

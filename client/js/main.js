@@ -95,33 +95,39 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
     let prevPickupCount   = 0;
     let prevShieldHits    = 0;
     let prevPickupCounts  = {};   // pro Pferd – für globalen Blitz-Sound
+    let prevHorseIds      = new Set();   // zum Erkennen von weggehenden Pferden
 
     // Zeitformatierung (lokale Referenz auf globale Funktion)
     const fmtTime = fmtTimeGlobal;
 
-    // ── Bereit-System (Lobby + Ergebnis-Screen) ──────────────────────────────
-    let _isReady = false;
+    // ── Bereit-System ─────────────────────────────────────────────────────────
+    let _isReady     = false;
+    let _viewingLobby = false;   // true sobald Spieler "Erneut spielen" geklickt hat
 
     function _setReadyUI(ready) {
         _isReady = ready;
         Network.sendReady(ready);
-        // Lobby-Panel-Button
+        const bg    = ready ? '#22aa44' : '';
+        const label = ready ? '✓ Bereit! (Abbrechen)' : '✓ Ich bin bereit!';
         const lbBtn = document.getElementById('lobbyReadyBtn');
-        if (lbBtn) {
-            lbBtn.textContent    = ready ? '✓ Bereit! (Abbrechen)' : '✓ Ich bin bereit!';
-            lbBtn.style.background = ready ? '#22aa44' : '';
-        }
-        // Ergebnis-Screen-Button
-        const resBtn = document.getElementById('resultsReadyBtn');
-        if (resBtn) {
-            resBtn.textContent = ready ? '⏳ Warte auf andere…' : '▶ Nächste Runde';
-            resBtn.style.background = ready ? 'rgba(34,170,68,0.25)' : '';
-        }
+        if (lbBtn) { lbBtn.textContent = label; lbBtn.style.background = bg; }
     }
 
-    window.toggleLobbyReady = function() { _setReadyUI(!_isReady); };
-    window.resultsReady     = function() { _setReadyUI(true); };
-    window.goBackToSelection = function() { window.location.href = 'index.html'; };
+    window.toggleLobbyReady  = function() { _setReadyUI(!_isReady); };
+    window.goBackToSelection  = function() { window.location.href = 'index.html'; };
+    window.startLobby         = function() { Network.sendStartGame(); };
+    window.kickPlayer = function(targetId) {
+        console.log('[Kick] Sende Kick für:', targetId);
+        Network.sendKickPlayer(targetId);
+    };
+
+    // Ergebnis-Screen → Lobby-Ansicht wechseln (nur Leader)
+    window.resultsPlayAgain = function() {
+        _viewingLobby = true;
+        hide('results');
+        show('lobbyPanel');
+        Network.sendReturnToLobby();
+    };
 
     window.sendChatMsg = function() {
         const input = document.getElementById('chatInput');
@@ -214,6 +220,75 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         }).join('');
     }
 
+    function _renderLobbyPanel(state, pid) {
+        const total     = Object.keys(state.horses || {}).length;
+        const readyCt   = (state.readyPlayers || []).length;
+        const amILeader = state.leaderId === pid;
+
+        // Bereit-Zähler
+        const rdEl = document.getElementById('lobbyReadyCount');
+        if (rdEl) rdEl.textContent = `${readyCt}/${total} bereit`;
+
+        // Start-Button: nur für Leader sichtbar
+        const startBtn = document.getElementById('lobbyStartBtn');
+        if (startBtn) {
+            startBtn.style.display = amILeader ? '' : 'none';
+            startBtn.disabled      = !(total > 0 && readyCt >= total);
+        }
+
+        // Ready-Button volle Breite wenn Leader-Start-Button ausgeblendet
+        const readyBtn = document.getElementById('lobbyReadyBtn');
+        if (readyBtn) {
+            readyBtn.style.borderRight = amILeader
+                ? '1px solid rgba(255,255,255,0.07)' : 'none';
+            readyBtn.style.borderRadius = amILeader
+                ? '' : '0 0 20px 20px';
+        }
+
+        // Spielerliste — nur neu rendern wenn sich tatsächlich etwas geändert hat.
+        // So werden die Buttons NICHT 20x/sec zerstört und onclick bleibt zuverlässig.
+        const listEl = document.getElementById('lobbyPlayerList');
+        if (listEl) {
+            const readySet = new Set(state.readyPlayers || []);
+
+            // Cache-Key: ändert sich nur wenn Spieler/Ready/Leader-Status sich ändert
+            const renderKey = pid + '§' + (state.leaderId || '') + '§' +
+                Object.values(state.horses || {})
+                    .map(h => `${h.id}:${h.name}:${h.horseType}:${readySet.has(h.id) ? 1 : 0}`)
+                    .sort().join('|');
+
+            if (listEl._renderKey !== renderKey) {
+                listEl._renderKey = renderKey;
+
+                const HORSE_LABELS = { blitz:'⚡', sturm:'🌪️', nebel:'🌫️', feuer:'🔥' };
+                listEl.innerHTML = Object.values(state.horses || {}).map(h => {
+                    const isMe     = h.id === pid;
+                    const isReady  = readySet.has(h.id);
+                    const isLeader = h.id === state.leaderId;
+                    const crown    = isLeader
+                        ? '<span class="lobby-leader-crown" title="Leader">👑</span>' : '';
+                    const kickBtn  = amILeader && !isMe
+                        ? `<button class="lobby-kick-btn" onclick="kickPlayer('${h.id}')" title="Kicken">✕</button>` : '';
+                    return `<div class="lobby-player ${isMe ? 'lobby-me' : ''}">
+                        <span class="lobby-ready-dot" style="color:${isReady ? '#4ecf6e' : '#334'}">●</span>
+                        ${crown}
+                        <span class="lobby-pname">${h.name || 'Fahrer'}${isMe ? ' 👤' : ''}</span>
+                        <span class="lobby-horse">${HORSE_LABELS[h.horseType] || '🐴'}</span>
+                        <span class="lobby-status ${isReady ? 'lobby-status-ready' : 'lobby-status-waiting'}">${isReady ? '✓ Bereit' : 'Wartet'}</span>
+                        ${kickBtn}
+                    </div>`;
+                }).join('');
+            }
+        }
+
+        const codeBox = document.getElementById('lobbyCodeBox');
+        const codeVal = document.getElementById('lobbyCodeValue');
+        if (codeBox && codeVal && state.lobbyId) {
+            codeBox.style.display = state.isPublic === false ? 'inline-flex' : 'none';
+            codeVal.textContent   = String(state.lobbyId).slice(0, 8).toUpperCase();
+        }
+    }
+
     const wsUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
     Network.connect(wsUrl, {
     onState: (state) => {
@@ -225,6 +300,13 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
             Minimap.draw(state, pid);
 
         // ── Pferde ───────────────────────────────────────────────────────────
+        // Ghost-Horse-Fix: Pferde die nicht mehr im State sind aus dem Renderer entfernen
+        const currentHorseIds = new Set(Object.keys(state.horses));
+        for (const id of prevHorseIds) {
+            if (!currentHorseIds.has(id)) Renderer.removeHorse(id);
+        }
+        prevHorseIds = currentHorseIds;
+
         for (const [id, h] of Object.entries(state.horses)) {
             const col = (id === pid) ? playerColor : null;
             Renderer.updateHorse(id, h.progress, h.speed, h.lane ?? 1, h.jumpHeight ?? 0, !!h.penalized, id === pid, col, h.name, h.rider, h.horseType, h.laps ?? 0, !!h.shieldActive, h.turboTimer > 0, !!h.finished, !!h.slipstream, h.blitzStunTimer > 0);
@@ -423,8 +505,7 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
             hide('countdown'); hide('lapDisplay'); hide('ranking'); hide('minimap');
             Audio.stopBgMusic();
             Renderer.resetVictoryCamera();
-
-            // Bereit-Button zurücksetzen
+            _viewingLobby = false;   // Ergebnis-Screen frisch anzeigen
             _setReadyUI(false);
 
             // ── Eigene Zeit speichern & Rekord prüfen ─────────────────────────
@@ -471,17 +552,21 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
 
             // ── Detaillierte Ergebnistabelle ──────────────────────────────────
             const medals = ['🥇','🥈','🥉'];
+            const HORSE_ICONS_RES = { blitz:'⚡', sturm:'🌪', nebel:'🌫', feuer:'🔥' };
             document.getElementById('resultsList').innerHTML = state.finishOrder.map((id, i) => {
                 const hd    = state.horses[id];
                 const isMe  = id === pid;
                 const total = hd?.finishTime != null ? fmtTime(hd.finishTime) : '--';
                 const name  = isMe ? `<b>${playerName}</b>` : (hd?.name || 'Pferd '+(i+1));
+                const icon  = HORSE_ICONS_RES[hd?.horseType] || '🐴';
                 const laps  = (hd?.lapTimes || []).map((t, li) =>
                     `<span>R${li+1}: ${fmtTime(t)}</span>`
                 ).join('');
+                const rank  = medals[i] ?? `${i+1}.`;
                 const delay = `animation-delay:${i * 0.09}s`;
                 return `<div class="result-row ${i===0?'winner':''} ${isMe?'is-me':''}" style="${delay}">
-                    <span class="rr-medal">${medals[i] ?? (i+1)+'.'}</span>
+                    <span class="rr-rank">${rank}</span>
+                    <span class="rr-icon">${icon}</span>
                     <span class="rr-name">${name}</span>
                     <div class="rr-laps">${laps}</div>
                     <span class="rr-total">⏱ ${total}</span>
@@ -491,14 +576,23 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
             show('results');
         }
 
-        // Ready-Anzeige im Ergebnis-Screen laufend aktualisieren
+        // "Erneut spielen"-Button: nur für Leader aktiv
         if (rs === 'results') {
-            const el = document.getElementById('resultsReadyCount');
-            if (el) {
-                const total = Object.keys(state.horses || {}).length;
-                const ready = (state.readyPlayers || []).length;
-                el.textContent = ready > 0 ? `${ready}/${total} bereit` : '';
+            const btn = document.getElementById('resultsPlayAgainBtn');
+            if (btn) {
+                const isLeader = pid && state.leaderId === pid;
+                btn.disabled       = !isLeader;
+                btn.textContent    = isLeader ? '🔄 Erneut spielen' : '⏳ Warte auf Leader…';
+                btn.style.opacity  = isLeader ? '1' : '0.45';
+                btn.style.cursor   = isLeader ? 'pointer' : 'default';
             }
+        }
+
+        // Spieler hat "Erneut spielen" geklickt → Lobby-Panel statt Ergebnis-Screen
+        if (rs === 'results' && _viewingLobby) {
+            hide('results');
+            _renderLobbyPanel(state, pid);
+            show('lobbyPanel');
         }
 
         if (rs === 'countdown' && prevRaceState !== 'countdown') {
@@ -528,49 +622,15 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
             hideAll();
             hide('minimap');
             Audio.stopBgMusic();
-
-            // Lobby-Panel anzeigen
+            _viewingLobby = false;
             show('lobbyPanel');
-
-            // Bereit-Status
-            const rdEl = document.getElementById('lobbyReadyCount');
-            if (rdEl) {
-                const total   = Object.keys(state.horses || {}).length;
-                const readyCt = (state.readyPlayers || []).length;
-                rdEl.textContent = `${readyCt}/${total} bereit`;
-            }
-
-            // Spielerliste
-            const listEl = document.getElementById('lobbyPlayerList');
-            if (listEl) {
-                const readySet = new Set(state.readyPlayers || []);
-                listEl.innerHTML = Object.values(state.horses || {}).map(h => {
-                    const isReady = readySet.has(h.id);
-                    const isMe    = h.id === pid;
-                    const HORSE_LABELS = { blitz:'⚡', sturm:'🌪️', nebel:'🌫️', feuer:'🔥' };
-                    return `<div class="lobby-player ${isMe ? 'lobby-me' : ''}">
-                        <span class="lobby-ready-dot" style="color:${isReady ? '#4ecf6e' : '#334'}">●</span>
-                        <span class="lobby-pname">${h.name || 'Fahrer'}${isMe ? ' 👤' : ''}</span>
-                        <span class="lobby-horse">${HORSE_LABELS[h.horseType] || '🐴'}</span>
-                        <span class="lobby-status ${isReady ? 'lobby-status-ready' : 'lobby-status-waiting'}">${isReady ? '✓ Bereit' : 'Wartet'}</span>
-                    </div>`;
-                }).join('');
-            }
-
-            // Raum-Code anzeigen (Lobby-ID als kompakter Code)
-            const codeBox = document.getElementById('lobbyCodeBox');
-            const codeVal = document.getElementById('lobbyCodeValue');
-            if (codeBox && codeVal && state.lobbyId) {
-                const isPrivate = state.isPublic === false;
-                codeBox.style.display = isPrivate ? 'inline-flex' : 'none';
-                codeVal.textContent   = String(state.lobbyId).slice(0, 8).toUpperCase();
-            }
-
-            // Eigener Bereit-Button zurücksetzen wenn wir gerade in die Lobby kommen
-            if (prevRaceState !== 'lobby') {
-                _setReadyUI(false);
-            }
+            _renderLobbyPanel(state, pid);
+            if (prevRaceState !== 'lobby') _setReadyUI(false);
+        } else if (rs === 'results' && _viewingLobby) {
+            // Spieler hat "Erneut spielen" geklickt — Lobby-Panel bleibt sichtbar
         } else {
+            // Countdown / Racing / Waiting → Flag zurücksetzen und Lobby verstecken
+            _viewingLobby = false;
             hide('lobbyPanel');
         }
 
@@ -590,9 +650,13 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         _inLobby   = true;
         _lobbyName = msg.lobbyName || null;
         hide('lobbyBrowser');
-        // Lobby-Name im HUD anzeigen
         const h2 = document.querySelector('#ui h2');
         if (h2 && _lobbyName) h2.textContent = '🏇 ' + _lobbyName;
+    },
+    onKicked: () => {
+        // Aus der Lobby geflogen → zurück zur Startseite mit Hinweis
+        sessionStorage.setItem('alicia_kicked', '1');
+        window.location.href = 'index.html';
     },
     });
 

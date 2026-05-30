@@ -19,16 +19,12 @@ const MIME = {
 
 // ── HTTP-Server ───────────────────────────────────────────────────────────────
 const httpServer = http.createServer((req, res) => {
-    // Query-Parameter abschneiden (z.B. ?v=123 von CDN/Proxys)
     const pathname  = req.url.split('?')[0].split('#')[0];
     const urlPath   = pathname === '/' ? '/index.html' : pathname;
-
-    // Path-Traversal verhindern
     const filePath  = path.join(CLIENT_DIR, urlPath);
     if (!filePath.startsWith(CLIENT_DIR)) {
         res.writeHead(403); res.end('Forbidden'); return;
     }
-
     fs.readFile(filePath, (err, data) => {
         if (err) { res.writeHead(404); res.end('Not found'); return; }
         const mime = MIME[path.extname(filePath)] || 'application/octet-stream';
@@ -41,7 +37,6 @@ const httpServer = http.createServer((req, res) => {
 const wss      = new WebSocket.Server({ server: httpServer });
 const lobbyMgr = new LobbyManager();
 
-/** Lobby-Liste an alle Clients schicken, die noch in keiner Lobby sind. */
 function sendLobbyList(onlyTo) {
     const payload = JSON.stringify({ type: 'lobbyList', lobbies: lobbyMgr.publicList() });
     const pool    = onlyTo ? [onlyTo] : wss.clients;
@@ -49,24 +44,23 @@ function sendLobbyList(onlyTo) {
         if (c.readyState === WebSocket.OPEN && !c.lobbyId) c.send(payload);
 }
 
-/** Nachricht an alle Clients einer Lobby senden. */
 function broadcastToLobby(lobbyId, obj) {
     const payload = JSON.stringify(obj);
     for (const c of wss.clients)
         if (c.readyState === WebSocket.OPEN && c.lobbyId === lobbyId) c.send(payload);
 }
 
-// ── Globaler Game-Loop: alle Lobbys gleichzeitig ticken ───────────────────────
+// ── Globaler Game-Loop ────────────────────────────────────────────────────────
 const loop = new GameLoop(20, (_tick, dt) => {
     for (const lb of lobbyMgr.lobbies.values()) {
         lb.race.update(dt);
-        const payload = JSON.stringify({ type: 'state', ...lb.race.getState() });
+        // leaderId mit in den State packen damit Clients wissen wer Leader ist
+        const payload = JSON.stringify({ type: 'state', ...lb.race.getState(), leaderId: lb.leaderId });
         for (const c of wss.clients)
             if (c.readyState === WebSocket.OPEN && c.lobbyId === lb.id) c.send(payload);
     }
 });
 
-// Lobby-Liste alle 4 s an Browse-Clients senden (hält State-Anzeigen aktuell)
 setInterval(() => sendLobbyList(), 4000);
 
 // ── WebSocket-Handler ─────────────────────────────────────────────────────────
@@ -74,7 +68,7 @@ wss.on('connection', (ws) => {
     ws.horseId = null;
     ws.lobbyId = null;
 
-    sendLobbyList(ws);   // Willkommen — hier sind die offenen Lobbys
+    sendLobbyList(ws);
 
     ws.on('message', (raw) => {
         let msg;
@@ -84,12 +78,13 @@ wss.on('connection', (ws) => {
         if (msg.type === 'createLobby' && !ws.lobbyId) {
             const lb = lobbyMgr.create(msg.lobbyName, msg.isPublic !== false, msg.totalLaps || 2);
             const id = Math.random().toString(36).substr(2, 8);
-            ws.horseId = id;
-            ws.lobbyId = lb.id;
+            ws.horseId  = id;
+            ws.lobbyId  = lb.id;
+            lb.leaderId = id;   // Ersteller wird Leader
             lb.race.addHorse(id, msg.horseType || 'blitz', msg.playerName || 'Fahrer', msg.rider || {});
             ws.send(JSON.stringify({ type: 'init', id, lobbyId: lb.id, lobbyName: lb.name }));
             sendLobbyList();
-            console.log(`[+] Lobby ${lb.id} "${lb.name}" erstellt von "${msg.playerName}" (${msg.horseType})`);
+            console.log(`[+] Lobby ${lb.id} "${lb.name}" erstellt von "${msg.playerName}" — Leader: ${id}`);
         }
 
         // ── Lobby beitreten ──────────────────────────────────────────────────
@@ -120,6 +115,53 @@ wss.on('connection', (ws) => {
         if (msg.type === 'ready' && ws.lobbyId && ws.horseId)
             lobbyMgr.get(ws.lobbyId)?.race.setReady(ws.horseId, msg.ready !== false);
 
+        // ── Spiel starten — nur Leader ────────────────────────────────────────
+        if (msg.type === 'startGame' && ws.lobbyId && ws.horseId) {
+            const lb = lobbyMgr.get(ws.lobbyId);
+            if (lb && lb.leaderId === ws.horseId) lb.race.tryStartGame();
+        }
+
+        // ── Zurück in Lobby — nur Leader ──────────────────────────────────────
+        if (msg.type === 'returnToLobby' && ws.lobbyId && ws.horseId) {
+            const lb = lobbyMgr.get(ws.lobbyId);
+            if (lb && lb.leaderId === ws.horseId) lb.race.returnToLobby();
+        }
+
+        // ── Spieler kicken — nur Leader ───────────────────────────────────────
+        if (msg.type === 'kickPlayer' && ws.lobbyId && ws.horseId) {
+            const lb = lobbyMgr.get(ws.lobbyId);
+            if (!lb || lb.leaderId !== ws.horseId) {
+                console.log(`[Kick] Abgelehnt: ${ws.horseId} ist kein Leader (Leader: ${lb?.leaderId})`);
+                return;
+            }
+            const targetId = msg.targetId;
+            if (!targetId || targetId === ws.horseId) return;
+
+            // Name vor dem Entfernen sichern
+            const targetName = lb.race.horses.get(targetId)?.playerName || 'Spieler';
+            lb.race.removeHorse(targetId);
+
+            // Gekickten Spieler benachrichtigen und aus der Lobby entfernen
+            for (const c of wss.clients) {
+                if (c.readyState === WebSocket.OPEN && c.horseId === targetId && c.lobbyId === ws.lobbyId) {
+                    c.send(JSON.stringify({ type: 'kicked' }));
+                    c.lobbyId = null;
+                    c.horseId = null;
+                    break;
+                }
+            }
+
+            // Allen verbleibenden Spielern eine System-Nachricht schicken
+            broadcastToLobby(ws.lobbyId, {
+                type: 'chat',
+                sender: 'System',
+                message: `${targetName} wurde aus der Lobby entfernt.`
+            });
+
+            sendLobbyList();
+            console.log(`[Kick] ${ws.horseId} hat "${targetName}" (${targetId}) aus ${ws.lobbyId} gekickt`);
+        }
+
         // ── Chat ──────────────────────────────────────────────────────────────
         if (msg.type === 'chat' && ws.lobbyId && ws.horseId) {
             const lb     = lobbyMgr.get(ws.lobbyId);
@@ -139,6 +181,14 @@ wss.on('connection', (ws) => {
         if (lb) {
             console.log(`[-] "${ws.horseId}" verlässt Lobby ${ws.lobbyId}`);
             lb.race.removeHorse(ws.horseId);
+
+            // Leader-Nachfolge: nächsten verbleibenden Spieler zum Leader machen
+            if (lb.leaderId === ws.horseId) {
+                const next = lb.race.horses.keys().next().value || null;
+                lb.leaderId = next;
+                if (next) console.log(`[Leader] Neuer Leader in ${ws.lobbyId}: ${next}`);
+            }
+
             if (lb.race.horses.size === 0) {
                 lobbyMgr.remove(ws.lobbyId);
                 console.log(`[X] Lobby ${ws.lobbyId} gelöscht (leer)`);

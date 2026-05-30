@@ -124,7 +124,10 @@
                 </div>
             </div>
 
-            <button id="lobbyReadyBtn" onclick="toggleLobbyReady()">✓ Ich bin bereit!</button>
+            <div id="lobbyFooter">
+                <button id="lobbyReadyBtn" onclick="toggleLobbyReady()">✓ Ich bin bereit!</button>
+                <button id="lobbyStartBtn" onclick="startLobby()" disabled>▶ Spiel starten</button>
+            </div>
         </div>
     </div>
 
@@ -178,16 +181,11 @@
     <div id="results">
         <div id="resultsOverlay">
 
-            <div style="text-align:center;">
+            <!-- Titel + Rekord -->
+            <div id="resultsHeader">
                 <div id="resultsTitle">🏁 Rennen beendet!</div>
-                <div id="resultsReadyArea">
-                    <button id="resultsReadyBtn" onclick="resultsReady()">▶ Nächste Runde</button>
-                    <button id="resultsBackBtn" onclick="goBackToSelection()">🔄 Pferd ändern</button>
-                    <span id="resultsReadyCount"></span>
-                </div>
+                <div id="recordBadge">🏆 Neuer persönlicher Rekord!</div>
             </div>
-
-            <div id="recordBadge">🏆 Neuer persönlicher Rekord!</div>
 
             <!-- Podium -->
             <div id="podium">
@@ -213,7 +211,19 @@
 
             <!-- Detaillierte Ergebnisliste -->
             <div id="resultsTable">
+                <div id="resultsTableHead">
+                    <span></span><span></span>
+                    <span>Fahrer</span>
+                    <span>Rundenzeiten</span>
+                    <span>Gesamt</span>
+                </div>
                 <div id="resultsList"></div>
+            </div>
+
+            <!-- Aktionen -->
+            <div id="resultsReadyArea">
+                <button id="resultsPlayAgainBtn" onclick="resultsPlayAgain()">🔄 Erneut spielen</button>
+                <button id="resultsBackBtn"      onclick="goBackToSelection()">🏠 Startseite</button>
             </div>
 
         </div>
