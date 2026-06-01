@@ -27,6 +27,34 @@
 }
 #lbSubtitle { font-size: 12px; color: #556; letter-spacing: 1px; }
 
+/* ── Fahrername ── */
+#lbNameRow {
+    display: flex; align-items: center; gap: 12px;
+    background: rgba(255,215,0,0.05);
+    border: 1px solid rgba(255,215,0,0.18);
+    border-radius: 12px; padding: 12px 18px;
+}
+#lbNameRow label {
+    font-size: 13px; font-weight: 700; color: #ffd700;
+    white-space: nowrap;
+}
+#lbPlayerNameInput {
+    flex: 1; background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.15); border-radius: 8px;
+    padding: 8px 12px; color: #fff; font-size: 14px; font-weight: 600;
+    outline: none; transition: border-color 0.2s;
+}
+#lbPlayerNameInput:focus { border-color: rgba(255,215,0,0.5); }
+#lbPlayerNameInput.input-error {
+    border-color: rgba(255,80,80,0.8);
+    animation: shake 0.35s ease;
+}
+@keyframes shake {
+    0%,100% { transform: translateX(0); }
+    20%      { transform: translateX(-6px); }
+    60%      { transform: translateX(6px); }
+}
+
 /* ── Fehler ── */
 #lobbyBrowserError {
     background: rgba(220,50,50,0.12); border: 1px solid rgba(220,50,50,0.3);
@@ -297,11 +325,13 @@
     font-weight: 900; color: #ffd700; letter-spacing: 3px;
 }
 .lobby-copy-btn {
-    background: none; border: none; cursor: pointer;
-    font-size: 13px; padding: 0; opacity: 0.65;
-    transition: opacity .15s; line-height: 1;
+    background: none; border: 1.5px solid transparent; border-radius: 5px;
+    cursor: pointer; padding: 3px 5px; opacity: 0.65; color: #fff;
+    transition: opacity .15s, border-color .15s; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
 }
 .lobby-copy-btn:hover { opacity: 1; }
+.lobby-copy-btn.copied { border-color: #44ee88; opacity: 1; color: #44ee88; }
 
 /* ── Haupt-Bereich (Spieler + Chat) ── */
 #lobbyMain {

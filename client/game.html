@@ -19,6 +19,13 @@
                 <div id="lbSubtitle">Wähle eine Lobby oder erstelle deine eigene</div>
             </div>
 
+            <!-- Fahrer-Name -->
+            <div id="lbNameRow">
+                <label for="lbPlayerNameInput">🧑 Dein Name</label>
+                <input id="lbPlayerNameInput" type="text" maxlength="16" placeholder="Name eingeben…"
+                    onkeydown="event.stopPropagation()">
+            </div>
+
             <div id="lobbyBrowserError" style="display:none;"></div>
 
             <!-- Zwei Spalten -->
@@ -98,13 +105,16 @@
                 <div id="lobbyTitle">🏇 Alicia Online</div>
                 <div id="lobbySubtitle">
                     <span id="lobbyReadyCount">0/0 bereit</span>
-                    &nbsp;— Alle müssen bereit sein um zu starten
                 </div>
                 <!-- Raum-Code (nur bei privater Lobby) -->
                 <div id="lobbyCodeBox" style="display:none">
-                    🔒 Privater Raum &nbsp;·&nbsp; Code:
+                    🔑 Code:
                     <span id="lobbyCodeValue" class="lobby-code-val"></span>
-                    <button class="lobby-copy-btn" onclick="copyLobbyCode()" title="Kopieren">📋</button>
+                    <button class="lobby-copy-btn" onclick="copyLobbyCode()" title="Kopieren">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                    </button>
                 </div>
             </div>
 
@@ -248,9 +258,13 @@
             if (!raw) { window.location.replace('index.html'); return; }
             let sel;
             try { sel = JSON.parse(raw); } catch { window.location.replace('index.html'); return; }
+            // Gespeicherten Namen im Eingabefeld vorausfüllen
+            const savedName = sessionStorage.getItem('alicia_playerName') || '';
+            const nameInput = document.getElementById('lbPlayerNameInput');
+            if (nameInput && savedName) nameInput.value = savedName;
             startGame(
                 sel.horseType   || 'blitz',
-                sel.playerName  || 'Fahrer',
+                savedName,
                 sel.riderConfig || { face: 0, shirt: 0, pants: 0 }
             );
         })();

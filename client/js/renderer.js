@@ -1129,6 +1129,103 @@ const Renderer = (() => {
         banMat.backFaceCulling = false;
         bannerPlane.material = _envMesh(banMat);
         _finishBanner = bannerPlane;
+
+        // ── Arktis-Zuschauer ──────────────────────────────────────────────────
+        const lut = _arcticLUT;
+        const spectCols = [
+            new BABYLON.Color3(0.85, 0.12, 0.12),
+            new BABYLON.Color3(0.18, 0.42, 0.88),
+            new BABYLON.Color3(0.88, 0.88, 0.95),
+            new BABYLON.Color3(0.15, 0.62, 0.28),
+            new BABYLON.Color3(0.90, 0.65, 0.10),
+            new BABYLON.Color3(0.60, 0.18, 0.75),
+        ];
+        const hatCols = [
+            new BABYLON.Color3(0.18, 0.18, 0.50),
+            new BABYLON.Color3(0.55, 0.12, 0.12),
+            new BABYLON.Color3(0.25, 0.25, 0.25),
+            new BABYLON.Color3(0.70, 0.50, 0.10),
+        ];
+        const skinM2 = _envMesh(mat(scene, new BABYLON.Color3(0.90, 0.72, 0.56)));
+        let _spIdx = 0;
+
+        function placeArcticSpectator(px, pz, lookProg) {
+            const bodyH = 0.80, headR = 0.18;
+            const baseY = bodyH / 2 + 0.01;
+            const si = _spIdx++;
+            const coat = _envMesh(mat(scene, spectCols[si % spectCols.length]));
+            const hm   = _envMesh(mat(scene, hatCols[si % hatCols.length]));
+
+            const body = _envMesh(BABYLON.MeshBuilder.CreateBox('arcsp_' + si,
+                { width: 0.50, height: bodyH, depth: 0.38 }, scene));
+            body.position = new BABYLON.Vector3(px, baseY, pz);
+            body.material = coat;
+
+            const head = _envMesh(BABYLON.MeshBuilder.CreateSphere('arcspH_' + si,
+                { diameter: headR * 2, segments: 4 }, scene));
+            head.position = new BABYLON.Vector3(px, bodyH + headR + 0.04, pz);
+            head.material = skinM2;
+
+            const hat = _envMesh(BABYLON.MeshBuilder.CreateCylinder('arcspHat_' + si,
+                { diameterTop: 0.20, diameterBottom: 0.26, height: 0.22, tessellation: 8 }, scene));
+            hat.position = new BABYLON.Vector3(px, bodyH + headR * 2 + 0.12, pz);
+            hat.material = hm;
+
+            const lp = _splinePos(lut, lookProg, 0);
+            const angle = Math.atan2(lp.x - px, lp.z - pz);
+            body.rotation.y = angle; head.rotation.y = angle; hat.rotation.y = angle;
+
+            _spectators.push({
+                body, head, hat, baseY,
+                headBaseY: bodyH + headR + 0.04,
+                hatBaseY:  bodyH + headR * 2 + 0.12,
+                worldX: px, worldZ: pz,
+                type: 'arctic', _lastDist: 999, _cheerTimer: -1,
+            });
+        }
+
+        // Dichte Gruppe platzieren: mehrere Reihen auf beiden Seiten
+        function placeGroup(centerProg, spread, rows, perRow) {
+            for (let side of [-1, 1]) {
+                for (let row = 0; row < rows; row++) {
+                    const rowDist = TW / 2 + 7 + row * 2.2;
+                    for (let col = 0; col < perRow; col++) {
+                        const offset = (col / (perRow - 1) - 0.5) * spread;
+                        const prog   = (centerProg + offset * 8 + TRACK_LENGTH) % TRACK_LENGTH;
+                        const p      = _splinePos(lut, prog, rowDist * side);
+                        // See vermeiden
+                        const dLx = p.x - 4, dLz = p.z - (-4);
+                        if (dLx * dLx / (22 * 22) + dLz * dLz / (13 * 13) < 1.3) continue;
+                        placeArcticSpectator(p.x, p.z, prog);
+                    }
+                }
+            }
+        }
+
+        // ── Große Gruppe: Zielbereich (etwas nach der Ziellinie) ────────────
+        placeGroup(40,  14, 3, 10);  // 3 Reihen × 10 Leute × 2 Seiten ≈ 60
+
+        // ── Große Gruppe: Halbzeit (etwas nach dem Halbzeit-Trigger) ─────────
+        placeGroup(550, 14, 3, 10);  // gleiches Schema
+
+        // ── Einzelne Zuschauer: Rest der Strecke ─────────────────────────────
+        // Bereiche nahe Ziel/Halbzeit überspringen (bereits bebaut)
+        const SPARSE = 28;
+        for (let i = 0; i < SPARSE; i++) {
+            const prog = (i / SPARSE) * TRACK_LENGTH;
+            // Überspringen wenn nahe einer der Gruppen
+            const nearFinish  = Math.min(Math.abs(prog - 40), Math.abs(prog - 40 - TRACK_LENGTH)) < 80;
+            const nearHalfway = Math.abs(prog - 550) < 80;
+            if (nearFinish || nearHalfway) continue;
+
+            const side   = (i % 4 === 0) ? -1 : 1;
+            const dist   = TW / 2 + 7 + Math.random() * 5;
+            const jitter = (Math.random() - 0.5) * 6;
+            const p      = _splinePos(lut, prog, (dist + jitter) * side);
+            const dLx = p.x - 4, dLz = p.z - (-4);
+            if (dLx * dLx / (22 * 22) + dLz * dLz / (13 * 13) < 1.2) continue;
+            placeArcticSpectator(p.x, p.z, prog);
+        }
     }
 
     // ── Map wechseln: ALLE Szenen-Meshes außer Pferden + Himmel entfernen ────
@@ -1742,23 +1839,60 @@ const Renderer = (() => {
                 pm.position.y  = 1.8 + Math.sin(puNow * 2.2 + (pm._phase || 0)) * 0.3;
             }
 
-            // Zuschauer-Welle
-            if (_waves.length > 0) {
+            // Zuschauer-Animation
+            if (_spectators.length > 0) {
                 const wNow = performance.now() / 1000;
-                _spectators.forEach(sp => { sp._dy = 0; });
-                for (let wi = _waves.length - 1; wi >= 0; wi--) {
-                    const w = _waves[wi];
-                    const el = wNow - w.startTime;
-                    if (el > 3.5) { _waves.splice(wi, 1); continue; }
-                    const front = w.z0 + w.dir * el * 14;
+
+                // Wiesen-Welle (lineare Z-basierte Welle)
+                if (_waves.length > 0) {
+                    _spectators.forEach(sp => { if (!sp.type) sp._dy = 0; });
+                    for (let wi = _waves.length - 1; wi >= 0; wi--) {
+                        const w = _waves[wi];
+                        const el = wNow - w.startTime;
+                        if (el > 3.5) { _waves.splice(wi, 1); continue; }
+                        const front = w.z0 + w.dir * el * 14;
+                        for (const sp of _spectators) {
+                            if (sp.type) continue; // arctic separat
+                            const phase = Math.max(0, 1 - Math.abs(sp.z - front) / 6.5);
+                            sp._dy = Math.max(sp._dy, Math.sin(phase * Math.PI) * 0.52);
+                        }
+                    }
+                    _spectators.forEach(sp => {
+                        if (!sp.type) sp.body.position.y = sp.baseY + (sp._dy || 0);
+                    });
+                }
+
+                // Arktis-Zuschauer: Jubeln wenn Pferd vorbeikommt (Proximity)
+                if (_arcticLUT && _playerId && horses[_playerId]) {
+                    const hpos = horses[_playerId].root.position;
                     for (const sp of _spectators) {
-                        const phase = Math.max(0, 1 - Math.abs(sp.z - front) / 6.5);
-                        sp._dy = Math.max(sp._dy, Math.sin(phase * Math.PI) * 0.52);
+                        if (sp.type !== 'arctic') continue;
+                        const dx = hpos.x - sp.worldX, dz = hpos.z - sp.worldZ;
+                        const dist = Math.sqrt(dx * dx + dz * dz);
+
+                        // Neues Jubeln auslösen wenn Pferd in Radius kommt
+                        if (dist < 13 && sp._lastDist >= 13) {
+                            sp._cheerTimer = wNow;
+                        }
+                        sp._lastDist = dist;
+
+                        // Jubel-Animation: sinus-Hüpfer über 1.2 Sekunden
+                        if (sp._cheerTimer >= 0) {
+                            const elapsed = wNow - sp._cheerTimer;
+                            if (elapsed < 1.2) {
+                                const dy = Math.sin(elapsed / 1.2 * Math.PI * 2) * 0.45;
+                                sp.body.position.y = sp.baseY    + Math.max(0, dy);
+                                sp.head.position.y = sp.headBaseY + Math.max(0, dy);
+                                sp.hat.position.y  = sp.hatBaseY  + Math.max(0, dy);
+                            } else {
+                                sp._cheerTimer = -1;
+                                sp.body.position.y = sp.baseY;
+                                sp.head.position.y = sp.headBaseY;
+                                sp.hat.position.y  = sp.hatBaseY;
+                            }
+                        }
                     }
                 }
-                _spectators.forEach(sp => {
-                    sp.body.position.y = sp.baseY + (sp._dy || 0);
-                });
             }
 
             // FINISH-Banner pulsiert

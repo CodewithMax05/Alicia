@@ -35,7 +35,7 @@ body {
     margin-bottom: 4px;
 }
 .sel-header p {
-    color: #556;
+    color: #99a;
     font-size: 12px;
     letter-spacing: 2px;
     text-transform: uppercase;
@@ -106,9 +106,9 @@ body {
     font-size: 30px;
 }
 .horse-card h3    { font-size: 14px; margin-bottom: 3px; }
-.horse-card small { color: #667; font-size: 10px; display: block; margin-bottom: 10px; line-height: 1.4; }
+.horse-card small { color: #99a; font-size: 10px; display: block; margin-bottom: 10px; line-height: 1.4; }
 
-.stat-row   { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 10px; color: #778; }
+.stat-row   { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 10px; color: #aab; }
 .stat-label { width: 44px; flex-shrink: 0; }
 .stat-track { flex: 1; background: rgba(255,255,255,0.07); border-radius: 3px; height: 4px; }
 .stat-fill  { height: 4px; border-radius: 3px; }
@@ -162,28 +162,28 @@ body {
     gap: 10px;
 }
 .char-label {
-    color: #778;
+    color: #aab;
     font-size: 11px;
     width: 66px;
     flex-shrink: 0;
     text-align: right;
     letter-spacing: 0.3px;
 }
-.char-opts { display: flex; gap: 6px; flex-wrap: wrap; }
+.char-opts { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .char-sw {
-    width: 28px; height: 28px; border-radius: 50%;
+    width: 36px; height: 36px; border-radius: 50%;
     border: 2px solid transparent; cursor: pointer; padding: 0;
     transition: transform .12s, border-color .12s, box-shadow .12s;
 }
 .char-sw:hover    { transform: scale(1.18); }
-.char-sw.selected { border-color: #ffd700; box-shadow: 0 0 7px rgba(255,215,0,0.55); transform: scale(1.12); }
+.char-sw.selected { border-color: #ffd700; box-shadow: 0 0 9px rgba(255,215,0,0.60); transform: scale(1.12); }
 
 /* Helm-Buttons */
 .char-hat {
     background: rgba(255,255,255,0.07);
-    font-size: 15px; line-height: 26px;
-    width: 32px; height: 32px;
+    font-size: 19px; line-height: 34px;
+    width: 40px; height: 40px;
 }
 
 /* ── Start-Button ── */
@@ -212,25 +212,6 @@ body {
     box-shadow: 0 6px 28px rgba(255,215,0,0.40);
 }
 
-/* ── Bestenliste ── */
-#highscorePanel {
-    width: 100%;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 14px;
-    padding: 18px 22px;
-}
-#highscorePanel h3 {
-    color: #ffd700;
-    font-size: 10px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-bottom: 12px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-#highscoreTable    { width: 100%; border-collapse: collapse; font-size: 12px; color: #bbb; }
-#highscoreTable thead tr { color: #556; }
 #highscoreTable thead th { padding-bottom: 6px; }
 
 /* ── Responsive ── */

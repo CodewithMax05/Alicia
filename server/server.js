@@ -54,13 +54,18 @@ function broadcastToLobby(lobbyId, obj) {
 function _resolveMap(lb) {
     const votes = Object.values(lb.mapVotes || {});
     if (votes.length === 0) return lb.race.mapId || 'meadow';
+    // Gewichtetes Zufallsprinzip: Wahrscheinlichkeit proportional zur Stimmanzahl
+    // z.B. 2:1 → 66% / 33%, 3:0 → 100%, 1:1 → 50% / 50%
     const counts = {};
     for (const v of votes) counts[v] = (counts[v] || 0) + 1;
-    // Meiste Stimmen gewinnt; Gleichstand = zufällig
-    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-    const maxVotes = sorted[0][1];
-    const tied = sorted.filter(([, n]) => n === maxVotes).map(([m]) => m);
-    return tied[Math.floor(Math.random() * tied.length)];
+    const total = votes.length;
+    let r = Math.random() * total;
+    for (const [map, n] of Object.entries(counts)) {
+        r -= n;
+        if (r <= 0) return map;
+    }
+    // Fallback (sollte nie eintreten)
+    return Object.keys(counts)[0];
 }
 
 // ── Globaler Game-Loop ────────────────────────────────────────────────────────
@@ -72,6 +77,7 @@ const loop = new GameLoop(20, (_tick, dt) => {
             ...lb.race.getState(),
             leaderId:  lb.leaderId,
             mapVotes:  lb.mapVotes || {},
+            isPublic:  lb.isPublic,
         });
         for (const c of wss.clients)
             if (c.readyState === WebSocket.OPEN && c.lobbyId === lb.id) c.send(payload);
@@ -93,16 +99,21 @@ wss.on('connection', (ws) => {
 
         // ── Lobby erstellen ──────────────────────────────────────────────────
         if (msg.type === 'createLobby' && !ws.lobbyId) {
+            const createName = (msg.playerName || '').trim();
+            if (!createName) {
+                ws.send(JSON.stringify({ type: 'error', code: 'NO_NAME', message: 'Bitte gib einen Namen ein.' }));
+                return;
+            }
             const lb = lobbyMgr.create(msg.lobbyName, msg.isPublic !== false, msg.totalLaps || 2);
             const id = Math.random().toString(36).substr(2, 8);
             ws.horseId  = id;
             ws.lobbyId  = lb.id;
             lb.leaderId = id;   // Ersteller wird Leader
             lb.mapVotes = {};   // { horseId: 'meadow'|'arctic' }
-            lb.race.addHorse(id, msg.horseType || 'blitz', msg.playerName || 'Fahrer', msg.rider || {});
+            lb.race.addHorse(id, msg.horseType || 'blitz', createName, msg.rider || {});
             ws.send(JSON.stringify({ type: 'init', id, lobbyId: lb.id, lobbyName: lb.name }));
             sendLobbyList();
-            console.log(`[+] Lobby ${lb.id} "${lb.name}" erstellt von "${msg.playerName}" — Leader: ${id}`);
+            console.log(`[+] Lobby ${lb.id} "${lb.name}" erstellt von "${createName}" — Leader: ${id}`);
         }
 
         // ── Lobby beitreten ──────────────────────────────────────────────────
@@ -116,13 +127,26 @@ wss.on('connection', (ws) => {
                 ws.send(JSON.stringify({ type: 'error', code: 'FULL', message: 'Lobby ist voll oder das Rennen hat bereits begonnen.' }));
                 return;
             }
+            // Doppelten Namen ablehnen (Groß-/Kleinschreibung ignorieren)
+            const joinName = (msg.playerName || '').trim();
+            if (!joinName) {
+                ws.send(JSON.stringify({ type: 'error', code: 'NO_NAME', message: 'Bitte gib einen Namen ein.' }));
+                return;
+            }
+            const nameLower = joinName.toLowerCase();
+            for (const h of lb.race.horses.values()) {
+                if ((h.playerName || '').toLowerCase() === nameLower) {
+                    ws.send(JSON.stringify({ type: 'error', code: 'NAME_TAKEN', message: `Der Name "${joinName}" ist in dieser Lobby bereits vergeben.` }));
+                    return;
+                }
+            }
             const id = Math.random().toString(36).substr(2, 8);
             ws.horseId = id;
             ws.lobbyId = lb.id;
-            lb.race.addHorse(id, msg.horseType || 'blitz', msg.playerName || 'Fahrer', msg.rider || {});
+            lb.race.addHorse(id, msg.horseType || 'blitz', joinName, msg.rider || {});
             ws.send(JSON.stringify({ type: 'init', id, lobbyId: lb.id, lobbyName: lb.name }));
             sendLobbyList();
-            console.log(`[+] "${msg.playerName}" tritt ${lb.id} bei (${lb.race.horses.size} Spieler)`);
+            console.log(`[+] "${joinName}" tritt ${lb.id} bei (${lb.race.horses.size} Spieler)`);
         }
 
         // ── Eingaben ─────────────────────────────────────────────────────────

@@ -155,26 +155,50 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
     // ── Lobby-Browser ────────────────────────────────────────────────────────
     let _inLobby    = false;
     let _lobbyName  = null;   // Name der Lobby in der wir sind (für HUD)
+    let _lobbyId    = null;   // ID/Code der aktuellen Lobby
 
     const STATE_LABELS = {
         waiting: 'Wartet', lobby: 'Lobby', countdown: 'Startet…',
         racing: '🏇 Läuft', results: 'Ergebnis',
     };
 
+    function _getAndValidateName() {
+        const input = document.getElementById('lbPlayerNameInput');
+        const name  = input?.value.trim().slice(0, 16) || '';
+        if (!name) {
+            const errEl = document.getElementById('lobbyBrowserError');
+            if (errEl) {
+                errEl.textContent = '⚠️ Bitte gib zuerst deinen Namen ein.';
+                errEl.style.display = 'block';
+                input?.focus();
+                input?.classList.add('input-error');
+                setTimeout(() => input?.classList.remove('input-error'), 1500);
+            }
+            return null;
+        }
+        // Gespeicherten Namen merken damit andere Teile (z.B. Highscore) ihn kennen
+        playerName = name;
+        sessionStorage.setItem('alicia_playerName', name);
+        hide('lobbyBrowserError');
+        return name;
+    }
+
     window.createLobby = function() {
+        const name = _getAndValidateName();
+        if (!name) return;
         const nameEl    = document.getElementById('newLobbyName');
         const pubEl     = document.getElementById('newLobbyPublic');
         const lapsEl    = document.getElementById('newLobbyLaps');
-        const lobbyName = (nameEl?.value.trim() || playerName + 's Lobby').slice(0, 28);
+        const lobbyName = (nameEl?.value.trim() || name + 's Lobby').slice(0, 28);
         const isPublic  = pubEl ? pubEl.checked : true;
         const totalLaps = Math.max(1, Math.min(10, parseInt(lapsEl?.value || '2', 10)));
-        hide('lobbyBrowserError');
-        Network.sendCreateLobby(lobbyName, isPublic, horseType, playerName, riderConfig, totalLaps);
+        Network.sendCreateLobby(lobbyName, isPublic, horseType, name, riderConfig, totalLaps);
     };
 
     window.joinLobbyById = function(lobbyId) {
-        hide('lobbyBrowserError');
-        Network.sendJoinLobby(lobbyId, horseType, playerName, riderConfig);
+        const name = _getAndValidateName();
+        if (!name) return;
+        Network.sendJoinLobby(lobbyId, horseType, name, riderConfig);
     };
 
     window.joinByCode = function() {
@@ -190,7 +214,7 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         if (!val) return;
         navigator.clipboard.writeText(val).then(() => {
             const btn = document.querySelector('.lobby-copy-btn');
-            if (btn) { btn.textContent = '✓'; setTimeout(() => btn.textContent = '📋', 1200); }
+            if (btn) { btn.classList.add('copied'); setTimeout(() => btn.classList.remove('copied'), 1200); }
         }).catch(() => {});
     };
 
@@ -238,8 +262,8 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         voteEl._renderKey = renderKey;
 
         const mapDefs = [
-            { id: 'meadow', icon: '🌿', name: 'Wiese',  desc: 'Rundes Oval · Klassisch', votes: meadowCt },
-            { id: 'arctic', icon: '🧊', name: 'Arktis', desc: 'Langer Kurs · Eis & Schnee', votes: arcticCt },
+            { id: 'meadow', icon: '🌿', name: 'Wiese',  votes: meadowCt },
+            { id: 'arctic', icon: '🧊', name: 'Arktis', votes: arcticCt },
         ];
 
         voteEl.innerHTML = mapDefs.map(m => {
@@ -249,7 +273,7 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
                         data-map-id="${m.id}">
                 <span class="mvc-icon">${m.icon}</span>
                 <span class="mvc-name">${m.name}</span>
-                <span class="mvc-desc">${m.desc}</span>
+
                 <span class="mvc-votes">${m.votes}/${total}</span>
                 ${isLeading ? '<span class="mvc-crown">★</span>' : ''}
             </button>`;
@@ -331,9 +355,9 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
 
         const codeBox = document.getElementById('lobbyCodeBox');
         const codeVal = document.getElementById('lobbyCodeValue');
-        if (codeBox && codeVal && state.lobbyId) {
-            codeBox.style.display = state.isPublic === false ? 'inline-flex' : 'none';
-            codeVal.textContent   = String(state.lobbyId).slice(0, 8).toUpperCase();
+        if (codeBox && codeVal && _lobbyId) {
+            codeBox.style.display = 'inline-flex';
+            codeVal.textContent   = String(_lobbyId).toUpperCase();
         }
     }
 
@@ -703,6 +727,7 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
     onInit: (msg) => {
         _inLobby   = true;
         _lobbyName = msg.lobbyName || null;
+        _lobbyId   = msg.lobbyId  || null;
         hide('lobbyBrowser');
         const h2 = document.querySelector('#ui h2');
         if (h2 && _lobbyName) h2.textContent = '🏇 ' + _lobbyName;
