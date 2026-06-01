@@ -116,6 +116,7 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
     window.toggleLobbyReady  = function() { _setReadyUI(!_isReady); };
     window.goBackToSelection  = function() { window.location.href = 'index.html'; };
     window.startLobby         = function() { Network.sendStartGame(); };
+    window.voteMap = function(mapId) { Network.sendMapVote(mapId); };
     window.kickPlayer = function(targetId) {
         console.log('[Kick] Sende Kick für:', targetId);
         Network.sendKickPlayer(targetId);
@@ -220,10 +221,57 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         }).join('');
     }
 
+    function _renderMapVote(state, pid) {
+        const voteEl = document.getElementById('lobbyMapRow');
+        if (!voteEl) return;
+
+        const votes    = state.mapVotes || {};
+        const myVote   = votes[pid] || null;
+        const meadowCt = Object.values(votes).filter(v => v === 'meadow').length;
+        const arcticCt = Object.values(votes).filter(v => v === 'arctic').length;
+        const total    = Object.keys(state.horses || {}).length;
+        const curMap   = state.mapId || 'meadow';
+
+        // Nur neu rendern wenn sich etwas geändert hat
+        const renderKey = `${myVote}|${meadowCt}|${arcticCt}|${total}|${curMap}`;
+        if (voteEl._renderKey === renderKey) return;
+        voteEl._renderKey = renderKey;
+
+        const mapDefs = [
+            { id: 'meadow', icon: '🌿', name: 'Wiese',  desc: 'Rundes Oval · Klassisch', votes: meadowCt },
+            { id: 'arctic', icon: '🧊', name: 'Arktis', desc: 'Langer Kurs · Eis & Schnee', votes: arcticCt },
+        ];
+
+        voteEl.innerHTML = mapDefs.map(m => {
+            const isVoted   = myVote === m.id;
+            const isLeading = m.id === curMap;
+            return `<button class="map-vote-card ${isVoted ? 'my-vote' : ''} ${isLeading ? 'leading' : ''}"
+                        data-map-id="${m.id}">
+                <span class="mvc-icon">${m.icon}</span>
+                <span class="mvc-name">${m.name}</span>
+                <span class="mvc-desc">${m.desc}</span>
+                <span class="mvc-votes">${m.votes}/${total}</span>
+                ${isLeading ? '<span class="mvc-crown">★</span>' : ''}
+            </button>`;
+        }).join('');
+
+        // Event-Delegation auf dem stabilen Container — einmalig setzen
+        if (!voteEl._listenerAdded) {
+            voteEl._listenerAdded = true;
+            voteEl.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-map-id]');
+                if (!btn) return;
+                Network.sendMapVote(btn.getAttribute('data-map-id'));
+            });
+        }
+    }
+
     function _renderLobbyPanel(state, pid) {
         const total     = Object.keys(state.horses || {}).length;
         const readyCt   = (state.readyPlayers || []).length;
         const amILeader = state.leaderId === pid;
+
+        _renderMapVote(state, pid);
 
         // Bereit-Zähler
         const rdEl = document.getElementById('lobbyReadyCount');
@@ -596,6 +644,11 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         }
 
         if (rs === 'countdown' && prevRaceState !== 'countdown') {
+            // Map wechseln wenn nötig
+            if (state.mapId) {
+                Renderer.setMap(state.mapId);
+                Minimap.setTrackConfig(state.mapId);
+            }
             Renderer.clearObstacles();
             Renderer.clearPowerups();
 

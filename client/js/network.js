@@ -69,6 +69,7 @@ const Network = (() => {
     function sendStartGame()             { _send({ type: 'startGame' }); }
     function sendReturnToLobby()         { _send({ type: 'returnToLobby' }); }
     function sendKickPlayer(targetId)    { _send({ type: 'kickPlayer',    targetId }); }
+    function sendMapVote(mapId)          { _send({ type: 'mapVote',       mapId }); }
 
     function getPlayerId()  { return playerId; }
     function getHorseType() { return _horseType; }
@@ -85,7 +86,7 @@ const Network = (() => {
     return {
         connect,
         sendCreateLobby, sendJoinLobby,
-        sendInput, sendChat, sendReady, sendStartGame, sendReturnToLobby, sendKickPlayer,
+        sendInput, sendChat, sendReady, sendStartGame, sendReturnToLobby, sendKickPlayer, sendMapVote,
         getPlayerId, getHorseType,
     };
 })();

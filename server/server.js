@@ -50,12 +50,29 @@ function broadcastToLobby(lobbyId, obj) {
         if (c.readyState === WebSocket.OPEN && c.lobbyId === lobbyId) c.send(payload);
 }
 
+// ── Hilfe: Map-Gewinner aus Vote-Objekt ermitteln ─────────────────────────────
+function _resolveMap(lb) {
+    const votes = Object.values(lb.mapVotes || {});
+    if (votes.length === 0) return lb.race.mapId || 'meadow';
+    const counts = {};
+    for (const v of votes) counts[v] = (counts[v] || 0) + 1;
+    // Meiste Stimmen gewinnt; Gleichstand = zufällig
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const maxVotes = sorted[0][1];
+    const tied = sorted.filter(([, n]) => n === maxVotes).map(([m]) => m);
+    return tied[Math.floor(Math.random() * tied.length)];
+}
+
 // ── Globaler Game-Loop ────────────────────────────────────────────────────────
 const loop = new GameLoop(20, (_tick, dt) => {
     for (const lb of lobbyMgr.lobbies.values()) {
         lb.race.update(dt);
-        // leaderId mit in den State packen damit Clients wissen wer Leader ist
-        const payload = JSON.stringify({ type: 'state', ...lb.race.getState(), leaderId: lb.leaderId });
+        const payload = JSON.stringify({
+            type: 'state',
+            ...lb.race.getState(),
+            leaderId:  lb.leaderId,
+            mapVotes:  lb.mapVotes || {},
+        });
         for (const c of wss.clients)
             if (c.readyState === WebSocket.OPEN && c.lobbyId === lb.id) c.send(payload);
     }
@@ -81,6 +98,7 @@ wss.on('connection', (ws) => {
             ws.horseId  = id;
             ws.lobbyId  = lb.id;
             lb.leaderId = id;   // Ersteller wird Leader
+            lb.mapVotes = {};   // { horseId: 'meadow'|'arctic' }
             lb.race.addHorse(id, msg.horseType || 'blitz', msg.playerName || 'Fahrer', msg.rider || {});
             ws.send(JSON.stringify({ type: 'init', id, lobbyId: lb.id, lobbyName: lb.name }));
             sendLobbyList();
@@ -115,16 +133,35 @@ wss.on('connection', (ws) => {
         if (msg.type === 'ready' && ws.lobbyId && ws.horseId)
             lobbyMgr.get(ws.lobbyId)?.race.setReady(ws.horseId, msg.ready !== false);
 
+        // ── Map-Vote ──────────────────────────────────────────────────────────
+        if (msg.type === 'mapVote' && ws.lobbyId && ws.horseId) {
+            const lb = lobbyMgr.get(ws.lobbyId);
+            if (lb && ['meadow', 'arctic'].includes(msg.mapId)) {
+                lb.mapVotes[ws.horseId] = msg.mapId;
+                // Sofortiges Preview: Map auf führenden Vote-Gewinner umstellen
+                const winning = _resolveMap(lb);
+                if (winning !== lb.race.mapId) lb.race.setMap(winning);
+                console.log(`[Map] ${ws.horseId} voted "${msg.mapId}" → aktuell "${winning}"`);
+            }
+        }
+
         // ── Spiel starten — nur Leader ────────────────────────────────────────
         if (msg.type === 'startGame' && ws.lobbyId && ws.horseId) {
             const lb = lobbyMgr.get(ws.lobbyId);
-            if (lb && lb.leaderId === ws.horseId) lb.race.tryStartGame();
+            if (lb && lb.leaderId === ws.horseId) {
+                // Gewinner-Map vor dem Start festlegen
+                lb.race.setMap(_resolveMap(lb));
+                lb.race.tryStartGame();
+            }
         }
 
         // ── Zurück in Lobby — nur Leader ──────────────────────────────────────
         if (msg.type === 'returnToLobby' && ws.lobbyId && ws.horseId) {
             const lb = lobbyMgr.get(ws.lobbyId);
-            if (lb && lb.leaderId === ws.horseId) lb.race.returnToLobby();
+            if (lb && lb.leaderId === ws.horseId) {
+                lb.mapVotes = {};   // Votes für neue Runde zurücksetzen
+                lb.race.returnToLobby();
+            }
         }
 
         // ── Spieler kicken — nur Leader ───────────────────────────────────────

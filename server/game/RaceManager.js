@@ -1,32 +1,111 @@
 const TRACK_LENGTH  = 1000;
 const GRAVITY       = 30;
-const TRACK_A       = 55;    // Ellipsen-Halbachse X (muss mit renderer.js übereinstimmen)
-const TRACK_B       = 28;    // Ellipsen-Halbachse Z
 
 // Spurversatz: [-3.5, 0, +3.5] für Innen/Mitte/Außen
 const LANE_OFFSETS = [-3.5, 0, 3.5];
 
-// Spurlängen-Skalierung:
-//   Für eine konvexe geschlossene Kurve gilt: C(d) = C₀ + 2π·d
-//   Ellipsen-Umfang Mitte ≈ 267.6 → Innen (d=-3.5): 245.6 | Außen (d=+3.5): 289.6
-//   LANE_SCALE[lane] = C_mitte / C_lane → rawProgress schneller auf Innenbahn, langsamer auf Außenbahn
-const LANE_SCALE = [267.6 / 245.6,   // Innen  ≈ 1.0896
-                    1.000,            // Mitte
-                    267.6 / 289.6];  // Außen  ≈ 0.9240
+// ── Frozen Circuit – Kontrollpunkte [x, z] für Catmull-Rom-Spline ─────────────
+// 14 Punkte → 6 echte Kurven: 2 Haarnadeln, lange Gerade, S-Kurven-Sektor
+const ARCTIC_PTS = [
+    [ 70,  -2],  //  0  Start/Ziel
+    [ 76, -18],  //  1  Kurve 1 – Einfahrt (weiter Rechtsbogen)
+    [ 62, -36],  //  2  Kurve 1 – Scheitelpunkt
+    [ 28, -44],  //  3  untere Gerade rechts
+    [ -2, -44],  //  4  untere Gerade Mitte
+    [-30, -42],  //  5  untere Gerade links
+    [-58, -30],  //  6  Kurve 2 – Einfahrt (linke Haarnadelkurve)
+    [-76,  -6],  //  7  Kurve 2 – Scheitelpunkt (eng!)
+    [-62,  20],  //  8  Kurve 2 – Ausfahrt
+    [-34,  36],  //  9  obere Gerade links
+    [ -6,  38],  // 10  S-Kurve Anfang
+    [ 16,  28],  // 11  S-Kurve – erster Bogen
+    [ 34,  36],  // 12  S-Kurve – zweiter Bogen
+    [ 60,  20],  // 13  Schlusskurve zurück zum Start
+];
 
-// Mittlere Bogenlänge der Mittelspur: ∫₀^2π sqrt(sin²t·A²+cos²t·B²) dt / (2π)
-// ≈ Ellipsen-Umfang / (2π) ≈ 267.6 / (2π) ≈ 42.60
-// Wird für Arc-Normalisierung verwendet, damit Pferd physisch überall gleich schnell fährt.
-const AVG_RAW_ARC = 42.60;
+// ── Catmull-Rom-Interpolation (ein Segment) ────────────────────────────────────
+function _crPt(p0, p1, p2, p3, t) {
+    const t2 = t*t, t3 = t2*t;
+    return [
+        0.5*(2*p1[0]+(-p0[0]+p2[0])*t+(2*p0[0]-5*p1[0]+4*p2[0]-p3[0])*t2+(-p0[0]+3*p1[0]-3*p2[0]+p3[0])*t3),
+        0.5*(2*p1[1]+(-p0[1]+p2[1])*t+(2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*t2+(-p0[1]+3*p1[1]-3*p2[1]+p3[1])*t3),
+    ];
+}
+
+// ── Lookup-Table aufbauen: N Punkte, gleichmäßig im Spline-Parameter ──────────
+function _buildSplineLUT(pts, N) {
+    const n = pts.length;
+    const xs = new Float32Array(N), zs = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+        const u = (i / N) * n;
+        const seg = Math.floor(u) % n, t = u - Math.floor(u);
+        const r = _crPt(pts[(seg-1+n)%n], pts[seg], pts[(seg+1)%n], pts[(seg+2)%n], t);
+        xs[i] = r[0]; zs[i] = r[1];
+    }
+    const nx = new Float32Array(N), nz = new Float32Array(N), arc = new Float32Array(N);
+    let s = 0;
+    for (let i = 0; i < N; i++) {
+        if (i > 0) { const dx=xs[i]-xs[i-1], dz=zs[i]-zs[i-1]; s+=Math.sqrt(dx*dx+dz*dz); }
+        arc[i] = s;
+        const pi=(i-1+N)%N, ni=(i+1)%N;
+        const dx=xs[ni]-xs[pi], dz=zs[ni]-zs[pi], len=Math.sqrt(dx*dx+dz*dz)||1;
+        nx[i]=dz/len; nz[i]=-dx/len;   // rechte Senkrechte = nach außen (CCW)
+    }
+    const wdx=xs[0]-xs[N-1], wdz=zs[0]-zs[N-1];
+    return { xs, zs, nx, nz, arc, total: s+Math.sqrt(wdx*wdx+wdz*wdz), N };
+}
+
+// ── 2D-Position aus LUT (für Physik/Slipstream) ───────────────────────────────
+function _splinePos2D(lut, progress, laneOff) {
+    const s = ((progress % TRACK_LENGTH + TRACK_LENGTH) % TRACK_LENGTH) / TRACK_LENGTH * lut.total;
+    let lo=0, hi=lut.N-1;
+    while (lo<hi-1) { const m=(lo+hi)>>1; if(lut.arc[m]<=s) lo=m; else hi=m; }
+    const b=(lo+1)%lut.N;
+    const segLen = (b ? lut.arc[b] : lut.total) - lut.arc[lo];
+    const t = segLen > 0 ? (s - lut.arc[lo]) / segLen : 0;
+    const ex = lut.xs[lo]+(lut.xs[b]-lut.xs[lo])*t;
+    const ez = lut.zs[lo]+(lut.zs[b]-lut.zs[lo])*t;
+    const enx= lut.nx[lo]+(lut.nx[b]-lut.nx[lo])*t;
+    const enz= lut.nz[lo]+(lut.nz[b]-lut.nz[lo])*t;
+    const el = Math.sqrt(enx*enx+enz*enz)||1;
+    return { x: ex+(enx/el)*laneOff, z: ez+(enz/el)*laneOff };
+}
+
+// ── Map-Konfigurationen ───────────────────────────────────────────────────────
+// Jede Map hat eigene Ellipsen-Halbachsen, Spurlängen-Skalierung und Arc-Normierung.
+//
+//  TRACK_A / TRACK_B  – Ellipsen-Halbachsen (müssen mit renderer.js übereinstimmen)
+//  LANE_SCALE         – C_mitte / C_spur; schneller auf Innenbahn, langsamer außen
+//  AVG_RAW_ARC        – Mittlere Bogenlänge pro Bogensekunde (für physikalisch
+//                       gleichmäßige Geschwindigkeit auf Kurve und Geraden)
+const MAP_CONFIGS = {
+    meadow: {
+        TRACK_A:     55,
+        TRACK_B:     28,
+        LANE_SCALE:  [267.6 / 245.6, 1.000, 267.6 / 289.6],
+        AVG_RAW_ARC: 42.60,
+        useSpline:   false,
+    },
+    arctic: {
+        // Frozen Circuit: Spline-basierte Strecke mit echten Kurven
+        TRACK_A:     0,    // nicht genutzt – Spline übernimmt Positionierung
+        TRACK_B:     0,
+        LANE_SCALE:  [1.058, 1.000, 0.948],
+        AVG_RAW_ARC: 1.0,  // bei Spline: arcNorm = 1.0 (LUT ist bogenparametriert)
+        useSpline:   true,
+    },
+};
 
 // Gibt 2D-Weltposition auf der Strecke zurück (für physische Distanzberechnungen)
-function trackPos2D(progress, laneOffset) {
+// Nutzt Instanz-Variablen this.TRACK_A / this.TRACK_B — muss als Methode aufgerufen werden.
+// Standalone-Wrapper für Aufrufe außerhalb der Klasse:
+function _trackPos2D_static(progress, laneOffset, trackA, trackB) {
     const t  = (progress / TRACK_LENGTH) * Math.PI * 2;
-    const cx = Math.cos(t) * TRACK_A;
-    const cz = Math.sin(t) * TRACK_B;
+    const cx = Math.cos(t) * trackA;
+    const cz = Math.sin(t) * trackB;
     if (laneOffset === 0) return { x: cx, z: cz };
-    const tx  = -Math.sin(t) * TRACK_A;
-    const tz  =  Math.cos(t) * TRACK_B;
+    const tx  = -Math.sin(t) * trackA;
+    const tz  =  Math.cos(t) * trackB;
     const len = Math.sqrt(tx * tx + tz * tz);
     return { x: cx + (tz / len) * laneOffset, z: cz + (-tx / len) * laneOffset };
 }
@@ -42,7 +121,7 @@ const HORSE_TYPES = {
 };
 
 class RaceManager {
-    constructor(onRaceEnd, totalLaps = 2) {
+    constructor(onRaceEnd, totalLaps = 2, mapId = 'meadow') {
         this.horses          = new Map();
         this.state           = 'waiting';
         this.countdown       = 0;
@@ -57,6 +136,25 @@ class RaceManager {
         this.weatherPreset   = 'sunny';
         this.readyPlayers    = new Set();
         this._puRespawnQueue = [];   // [{type, timer}]
+
+        // Map-spezifische Physik-Parameter
+        this._applyMapConfig(mapId);
+    }
+
+    /** Wechselt die Map-Konfiguration (Physik-Parameter). */
+    setMap(mapId) {
+        this._applyMapConfig(mapId);
+    }
+
+    _applyMapConfig(mapId) {
+        const cfg = MAP_CONFIGS[mapId] || MAP_CONFIGS.meadow;
+        this.mapId       = mapId in MAP_CONFIGS ? mapId : 'meadow';
+        this.TRACK_A     = cfg.TRACK_A;
+        this.TRACK_B     = cfg.TRACK_B;
+        this.LANE_SCALE  = cfg.LANE_SCALE;
+        this.AVG_RAW_ARC = cfg.AVG_RAW_ARC;
+        // Spline-LUT für nicht-elliptische Strecken
+        this.splineLUT   = cfg.useSpline ? _buildSplineLUT(ARCTIC_PTS, 512) : null;
     }
 
     // ── Pferde ────────────────────────────────────────────────────────────────
@@ -238,29 +336,39 @@ class RaceManager {
     }
 
     _generateObstacles() {
-        const obs     = [];
-        const blocked = [];
+        const isArctic = this.mapId === 'arctic';
+        const obs      = [];
+        const blocked  = [];
 
-        // ── Heuballen (einzelne Spur, überspringen oder ausweichen) ────────────
-        for (let i = 0; i < 5; i++) {
-            const pos = this._findPos(blocked, 80);
-            blocked.push({ pos, minDist: 50 });
+        // Mindestabstände je nach Map anpassen (Arctic hat mehr Items → enger)
+        const margin     = isArctic ? 55 : 80;
+        const distSingle = isArctic ? 28 : 45;
+        const distFence  = isArctic ? 35 : 55;
+        const distCart   = isArctic ? 35 : 65;
+
+        // ── Einzelspur-Hindernisse (Heuballen / Eisblöcke) ─────────────────────
+        const singleCount = isArctic ? 14 : 5;
+        for (let i = 0; i < singleCount; i++) {
+            const pos = this._findPos(blocked, margin);
+            blocked.push({ pos, minDist: distSingle });
             obs.push({ id: i, progress: pos, lane: Math.floor(Math.random() * 3), type: 'haybale' });
         }
 
-        // ── Holzzäune (alle Spuren, Sprung zwingend nötig) ──────────────────────
-        for (let i = 0; i < 2; i++) {
-            const pos = this._findPos(blocked, 80);
-            blocked.push({ pos, minDist: 55 });
-            obs.push({ id: 5 + i, progress: pos, lane: -1, type: 'fence' });
+        // ── Vollspur-Hindernisse (Zaun / Eiswand, Sprung zwingend) ─────────────
+        const fenceCount = isArctic ? 5 : 2;
+        for (let i = 0; i < fenceCount; i++) {
+            const pos = this._findPos(blocked, margin);
+            blocked.push({ pos, minDist: distFence });
+            obs.push({ id: 20 + i, progress: pos, lane: -1, type: 'fence' });
         }
 
-        // ── Heuwagen (Schiebebande mit Heuthema) ─────────────────────────────────
-        for (let i = 0; i < 3; i++) {
-            const pos = this._findPos(blocked, 100);
-            blocked.push({ pos, minDist: 65 });
+        // ── Bewegliche Hindernisse (Heuwagen / Eisschollen) ────────────────────
+        const cartCount = isArctic ? 6 : 3;
+        for (let i = 0; i < cartCount; i++) {
+            const pos = this._findPos(blocked, margin);
+            blocked.push({ pos, minDist: distCart });
             obs.push({
-                id: 9 + i, progress: pos, lane: 1, laneFloat: 1.0,
+                id: 30 + i, progress: pos, lane: 1, laneFloat: 1.0,
                 lanePhase: i * 1.55 + Math.random() * 0.9,
                 laneSpeed: 0.65 + Math.random() * 0.55,
                 type: 'haycart',
@@ -268,17 +376,22 @@ class RaceManager {
         }
 
         return obs;
+        // Arctic gesamt: 14 + 5 + 6 = 25 Hindernisse
     }
 
     _generatePowerups() {
-        // 8 Power-Ups: min. 45 Einh. Abstand zu Hindernissen, min. 80 Einh. zueinander
-        const types    = ['stamina','turbo','shield','blitz','stamina','turbo','shield','blitz'];
-        const obsConst = this.obstacles.map(o => ({ pos: o.progress, minDist: 45 }));
-        const puConst  = [];   // wächst pro platziertem Power-Up
+        const isArctic = this.mapId === 'arctic';
+        // Arctic: 14 Power-Ups, Meadow: 8
+        const count    = isArctic ? 14 : 8;
+        const base     = ['stamina', 'turbo', 'shield', 'blitz'];
+        const types    = Array.from({ length: count }, (_, i) => base[i % base.length]);
+        const obsConst = this.obstacles.map(o => ({ pos: o.progress, minDist: 35 }));
+        const puConst  = [];
+        const puMinDist = isArctic ? 42 : 70;
 
         return types.map((type, i) => {
-            const pos = this._findPos([...obsConst, ...puConst], 60);
-            puConst.push({ pos, minDist: 80 });
+            const pos = this._findPos([...obsConst, ...puConst], 50);
+            puConst.push({ pos, minDist: puMinDist });
             return { id: `pu_start_${i}`, progress: pos, lane: Math.floor(Math.random() * 3), type, collected: false };
         });
     }
@@ -361,15 +474,18 @@ class RaceManager {
 
 
             // Windschatten: physische 2D-Distanz statt rawProgress-Lücke
-            // → funktioniert in Kurven und auf Geraden gleich
             h.slipstream = false;
             {
-                const hPos = trackPos2D(h.progress, LANE_OFFSETS[h.lane]);
+                const lut = this.splineLUT;
+                const getPos = (prog, lane) => lut
+                    ? _splinePos2D(lut, prog, LANE_OFFSETS[lane])
+                    : _trackPos2D_static(prog, LANE_OFFSETS[lane], this.TRACK_A, this.TRACK_B);
+                const hPos = getPos(h.progress, h.lane);
                 for (const [oid, other] of this.horses) {
                     if (oid === id || other.finished) continue;
                     if (other.lane !== h.lane) continue;
-                    if (other.rawProgress <= h.rawProgress) continue; // muss vor uns sein
-                    const oPos = trackPos2D(other.progress, LANE_OFFSETS[other.lane]);
+                    if (other.rawProgress <= h.rawProgress) continue;
+                    const oPos = getPos(other.progress, other.lane);
                     const dx = oPos.x - hPos.x, dz = oPos.z - hPos.z;
                     const dist2 = dx * dx + dz * dz;
                     if (dist2 > 1.5 * 1.5 && dist2 < 9 * 9) { h.slipstream = true; break; }
@@ -414,15 +530,21 @@ class RaceManager {
             // (ohne 2π/TRACK_LENGTH-Faktor). arcNorm = AVG/lokal → in Kurven (rawArc groß)
             // schreitet rawProgress langsamer vor, auf Geraden (rawArc klein) schneller.
             // Spurlängen-Skalierung: Innenbahn schreitet schneller voran (kürzere Strecke).
-            const t_arc   = (h.rawProgress / TRACK_LENGTH) * Math.PI * 2;
-            const rawArc  = Math.sqrt(
-                Math.sin(t_arc) * Math.sin(t_arc) * TRACK_A * TRACK_A +
-                Math.cos(t_arc) * Math.cos(t_arc) * TRACK_B * TRACK_B
-            );
-            const arcNorm = AVG_RAW_ARC / rawArc;
+            // Arc-Normierung: Spline = uniform (arcNorm 1.0), Ellipse = positionsabhängig
+            let arcNorm;
+            if (this.splineLUT) {
+                arcNorm = 1.0;
+            } else {
+                const t_arc = (h.rawProgress / TRACK_LENGTH) * Math.PI * 2;
+                const rawArc = Math.sqrt(
+                    Math.sin(t_arc) * Math.sin(t_arc) * this.TRACK_A * this.TRACK_A +
+                    Math.cos(t_arc) * Math.cos(t_arc) * this.TRACK_B * this.TRACK_B
+                );
+                arcNorm = this.AVG_RAW_ARC / rawArc;
+            }
 
             const prevLap  = Math.floor(h.rawProgress / TRACK_LENGTH);
-            h.rawProgress += h.speed * deltaTime * LANE_SCALE[h.lane] * arcNorm;
+            h.rawProgress += h.speed * deltaTime * this.LANE_SCALE[h.lane] * arcNorm;
             const newLap   = Math.floor(h.rawProgress / TRACK_LENGTH);
             if (newLap > prevLap) {
                 h.laps = newLap;
@@ -530,6 +652,7 @@ class RaceManager {
             powerups: this.powerups.filter(p => !p.collected),
             weatherPreset: this.weatherPreset,
             readyPlayers: [...this.readyPlayers],
+            mapId: this.mapId,
         };
     }
 }
