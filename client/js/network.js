@@ -19,7 +19,16 @@ const Network = (() => {
 
         ws = new WebSocket(url);
 
-        ws.onopen  = () => setStatus('Verbunden', '#4caf50');
+        ws.onopen = () => {
+            setStatus('Verbunden', '#4caf50');
+            // Automatischer Rejoin nach Seitenneuladen
+            const horseId = sessionStorage.getItem('alicia_horseId');
+            const lobbyId = sessionStorage.getItem('alicia_lobbyId');
+            if (horseId && lobbyId) {
+                setStatus('Verbinde wieder…', '#ffd700');
+                _send({ type: 'rejoin', horseId, lobbyId });
+            }
+        };
         ws.onclose = () => setStatus('Getrennt – neu laden', '#f44336');
         ws.onerror = () => setStatus('Verbindungsfehler', '#f44336');
 

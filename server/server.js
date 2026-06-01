@@ -37,6 +37,9 @@ const httpServer = http.createServer((req, res) => {
 const wss      = new WebSocket.Server({ server: httpServer });
 const lobbyMgr = new LobbyManager();
 
+// Ausstehende Rejoins: horseId → { timer, lobbyId }
+const _pendingRejoins = new Map();
+
 function sendLobbyList(onlyTo) {
     const payload = JSON.stringify({ type: 'lobbyList', lobbies: lobbyMgr.publicList() });
     const pool    = onlyTo ? [onlyTo] : wss.clients;
@@ -96,6 +99,30 @@ wss.on('connection', (ws) => {
     ws.on('message', (raw) => {
         let msg;
         try { msg = JSON.parse(raw); } catch { return; }
+
+        // ── Rejoin nach Seitenneuladen ───────────────────────────────────────
+        if (msg.type === 'rejoin' && !ws.lobbyId) {
+            const pending = _pendingRejoins.get(msg.horseId);
+            if (!pending) {
+                ws.send(JSON.stringify({ type: 'error', code: 'REJOIN_FAILED', message: 'Sitzung abgelaufen oder nicht gefunden.' }));
+                return;
+            }
+            const lb = lobbyMgr.get(pending.lobbyId);
+            if (!lb || !lb.race.horses.has(msg.horseId)) {
+                _pendingRejoins.delete(msg.horseId);
+                ws.send(JSON.stringify({ type: 'error', code: 'REJOIN_FAILED', message: 'Lobby nicht mehr verfügbar.' }));
+                return;
+            }
+            // Grace-Timer abbrechen und WebSocket wiederherstellen
+            clearTimeout(pending.timer);
+            _pendingRejoins.delete(msg.horseId);
+            ws.horseId = msg.horseId;
+            ws.lobbyId = lb.id;
+            ws.send(JSON.stringify({ type: 'init', id: msg.horseId, lobbyId: lb.id, lobbyName: lb.name, rejoin: true }));
+            console.log(`[Rejoin] "${msg.horseId}" ist zurück in Lobby ${lb.id}`);
+            sendLobbyList();
+            return;
+        }
 
         // ── Lobby erstellen ──────────────────────────────────────────────────
         if (msg.type === 'createLobby' && !ws.lobbyId) {
@@ -239,22 +266,31 @@ wss.on('connection', (ws) => {
     ws.on('close', () => {
         if (!ws.lobbyId || !ws.horseId) return;
         const lb = lobbyMgr.get(ws.lobbyId);
-        if (lb) {
-            console.log(`[-] "${ws.horseId}" verlässt Lobby ${ws.lobbyId}`);
-            lb.race.removeHorse(ws.horseId);
+        if (!lb) return;
 
-            // Leader-Nachfolge: nächsten verbleibenden Spieler zum Leader machen
-            if (lb.leaderId === ws.horseId) {
-                const next = lb.race.horses.keys().next().value || null;
-                lb.leaderId = next;
+        console.log(`[~] "${ws.horseId}" getrennt – warte 15s auf Rejoin`);
+
+        // Grace-Timer: 15 Sekunden Zeit zum Wiederverbinden
+        const timer = setTimeout(() => {
+            _pendingRejoins.delete(ws.horseId);
+            const lb2 = lobbyMgr.get(ws.lobbyId);
+            if (!lb2) return;
+            console.log(`[-] "${ws.horseId}" nicht zurückgekehrt – entfernt`);
+            lb2.race.removeHorse(ws.horseId);
+
+            if (lb2.leaderId === ws.horseId) {
+                const next = lb2.race.horses.keys().next().value || null;
+                lb2.leaderId = next;
                 if (next) console.log(`[Leader] Neuer Leader in ${ws.lobbyId}: ${next}`);
             }
-
-            if (lb.race.horses.size === 0) {
+            if (lb2.race.horses.size === 0) {
                 lobbyMgr.remove(ws.lobbyId);
                 console.log(`[X] Lobby ${ws.lobbyId} gelöscht (leer)`);
             }
-        }
+            sendLobbyList();
+        }, 5000);
+
+        _pendingRejoins.set(ws.horseId, { timer, lobbyId: ws.lobbyId });
         sendLobbyList();
     });
 });

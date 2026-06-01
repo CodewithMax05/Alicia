@@ -2204,7 +2204,11 @@ const Renderer = (() => {
         } else {
             scene.activeCamera = camera;
             camera.attachControl(engine.getRenderingCanvas(), true);
-            // Sofort auf aktuelle Pferdeposition springen, nicht langsam hinlerpen
+            // Radius und Winkel zurücksetzen auf Standardwerte
+            camera.radius = 45;
+            camera.alpha  = -Math.PI / 2;
+            camera.beta   = 0.72;
+            // Sofort auf aktuelle Pferdeposition springen
             if (_playerId && horses[_playerId]) {
                 const pos = horses[_playerId].root.position;
                 camera.target = new BABYLON.Vector3(pos.x, pos.y + 1, pos.z);
@@ -2261,11 +2265,15 @@ const Renderer = (() => {
                 const laneOff = -3.5 + Math.max(0, Math.min(2, laneIdx)) * 3.5;
                 const pos     = trackPosition(obs.progress, laneOff);
 
+                // Spurrichtung aus zwei Streckenmittelpunkten – unabhängig vom Lateral-Offset
+                const cCur = trackPosition(obs.progress,     0);
+                const cNxt = trackPosition(obs.progress + 5, 0);
+                const trackAngle = Math.atan2(cNxt.x - cCur.x, cNxt.z - cCur.z);
                 if (obstacleMeshes[obs.id]) {
                     obstacleMeshes[obs.id].position.x = pos.x;
                     obstacleMeshes[obs.id].position.z = pos.z;
+                    obstacleMeshes[obs.id].rotation.y = trackAngle;
                 } else {
-                    const cNxt = trackPosition(obs.progress + 5, 0);
                     const root = new BABYLON.TransformNode('obs'+obs.id, scene);
                     root.position = new BABYLON.Vector3(pos.x, 0, pos.z);
 
@@ -2310,8 +2318,7 @@ const Renderer = (() => {
                         });
                     }
 
-                    root.lookAt(new BABYLON.Vector3(cNxt.x, 0, cNxt.z));
-                    root.getChildMeshes().forEach(m => { m });
+                    root.rotation.y = trackAngle;
                     obstacleMeshes[obs.id] = root;
                 }
                 continue;

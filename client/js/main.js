@@ -114,7 +114,11 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
     }
 
     window.toggleLobbyReady  = function() { _setReadyUI(!_isReady); };
-    window.goBackToSelection  = function() { window.location.href = 'index.html'; };
+    window.goBackToSelection  = function() {
+        sessionStorage.removeItem('alicia_horseId');
+        sessionStorage.removeItem('alicia_lobbyId');
+        window.location.href = 'index.html';
+    };
     window.startLobby         = function() { Network.sendStartGame(); };
     window.voteMap = function(mapId) { Network.sendMapVote(mapId); };
     window.kickPlayer = function(targetId) {
@@ -366,6 +370,12 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
     onState: (state) => {
         const pid = Network.getPlayerId();
         const rs  = state.raceState;
+
+        // ── Map sicherstellen (wichtig nach Rejoin wenn Race bereits läuft) ──
+        if (state.mapId && prevRaceState === null) {
+            Renderer.setMap(state.mapId);
+            Minimap.setTrackConfig(state.mapId);
+        }
 
         // ── Minimap ──────────────────────────────────────────────────────────
         if (rs === 'racing' || rs === 'countdown')
@@ -668,6 +678,12 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         }
 
         if (rs === 'countdown' && prevRaceState !== 'countdown') {
+            // Kamera immer auf Follow zurücksetzen wenn neues Rennen startet
+            if (camMode !== 'follow') {
+                camMode = 'follow';
+                Renderer.setCameraMode('follow');
+                document.getElementById('camMode').textContent = '📷 Third-Person';
+            }
             // Map wechseln wenn nötig
             if (state.mapId) {
                 Renderer.setMap(state.mapId);
@@ -721,6 +737,13 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         renderLobbyBrowser(lobbies);
     },
     onError: (err) => {
+        if (err.code === 'REJOIN_FAILED') {
+            // Gespeicherte Session löschen → normaler Lobby-Browser
+            sessionStorage.removeItem('alicia_horseId');
+            sessionStorage.removeItem('alicia_lobbyId');
+            show('lobbyBrowser');
+            return;
+        }
         const el = document.getElementById('lobbyBrowserError');
         if (el) { el.textContent = '⚠ ' + err.message; el.style.display = 'block'; }
     },
@@ -728,6 +751,9 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         _inLobby   = true;
         _lobbyName = msg.lobbyName || null;
         _lobbyId   = msg.lobbyId  || null;
+        // Für Rejoin nach Seitenneuladen speichern
+        sessionStorage.setItem('alicia_horseId', msg.id);
+        sessionStorage.setItem('alicia_lobbyId', msg.lobbyId);
         hide('lobbyBrowser');
         const h2 = document.querySelector('#ui h2');
         if (h2 && _lobbyName) h2.textContent = '🏇 ' + _lobbyName;

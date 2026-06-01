@@ -450,6 +450,7 @@
     overflow: hidden;
 }
 
+#lobbyLeaveBtn,
 #lobbyReadyBtn,
 #lobbyStartBtn {
     flex: 1; padding: 14px;
@@ -457,6 +458,14 @@
     border: none; cursor: pointer;
     transition: background .2s, color .2s, opacity .2s;
 }
+
+#lobbyLeaveBtn {
+    background: rgba(255,255,255,0.04);
+    color: #ff6b6b;
+    border-right: 1px solid rgba(255,255,255,0.07);
+    flex: 0 0 auto; padding: 14px 20px;
+}
+#lobbyLeaveBtn:hover { background: rgba(255,80,80,0.15); }
 
 #lobbyReadyBtn {
     background: rgba(255,255,255,0.04);
