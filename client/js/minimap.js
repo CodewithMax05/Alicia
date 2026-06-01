@@ -150,8 +150,21 @@ const Minimap = (() => {
             ctx.closePath();
             ctx.fillStyle = 'rgba(180, 210, 240, 0.45)';
             ctx.fill();
+
+            // ── Zugefrorener See ───────────────────────────────────────────
+            const lkCX = CX + 4  * SC;
+            const lkCY = CY - (-4) * SC;   // world-Z negiert für canvas-Y
+            const lkRX = 22 * SC;
+            const lkRY = 13 * SC;
+            ctx.beginPath();
+            ctx.ellipse(lkCX, lkCY, lkRX, lkRY, 0, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(80, 160, 220, 0.55)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(160, 210, 255, 0.80)';
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
         } else {
-            // ── Meadow: Ellipsen wie bisher ────────────────────────────────
+            // ── Meadow: Innenfeld + Strecke ────────────────────────────────
             ctx.beginPath();
             ctx.ellipse(CX, CY, (_trackA - TW/2) * SC, (_trackB - TW/2) * SC, 0, 0, Math.PI * 2);
             ctx.fillStyle = 'rgba(22, 68, 22, 0.7)';
@@ -162,6 +175,15 @@ const Minimap = (() => {
             ctx.ellipse(CX, CY, (_trackA - TW/2) * SC, (_trackB - TW/2) * SC, 0, Math.PI * 2, 0, true);
             ctx.fillStyle = 'rgba(175, 148, 90, 0.55)';
             ctx.fill('evenodd');
+
+            // ── See im Innenfeld ───────────────────────────────────────────
+            ctx.beginPath();
+            ctx.ellipse(CX, CY, 28 * SC, 12 * SC, 0, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(30, 110, 180, 0.60)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(90, 160, 220, 0.85)';
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
         }
 
         // ── Spurtrennlinien (gelb, gestrichelt) ────────────────────────────

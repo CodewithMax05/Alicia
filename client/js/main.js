@@ -652,11 +652,12 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
             Renderer.clearObstacles();
             Renderer.clearPowerups();
 
-            // Wetter anwenden (nur wenn sich das Preset geändert hat)
-            if (state.weatherPreset && state.weatherPreset !== _appliedWeather) {
-                _appliedWeather = state.weatherPreset;
-                Renderer.setWeather(state.weatherPreset);
-                _showWeatherToast(state.weatherPreset);
+            // Wetter anwenden – Arctic-Map überschreibt immer mit 'arctic'
+            const effectiveWeather = state.mapId === 'arctic' ? 'foggy' : state.weatherPreset;
+            if (effectiveWeather && effectiveWeather !== _appliedWeather) {
+                _appliedWeather = effectiveWeather;
+                Renderer.setWeather(effectiveWeather);
+                if (state.mapId !== 'arctic') _showWeatherToast(effectiveWeather);
             }
             prevJumpHeight = 0; prevPenalized = false; prevFinished = false;
             prevLapCount = 0; prevTurboTimer = 0; prevShieldActive = false;

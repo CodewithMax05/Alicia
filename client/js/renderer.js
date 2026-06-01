@@ -450,21 +450,50 @@ const Renderer = (() => {
     }
 
     function buildTree(x, z, h = 4, s = 1) {
-        const trunkH = h * 0.35;
-        const topH   = h * 0.85;
-        const trunk  = BABYLON.MeshBuilder.CreateCylinder('tr', { height: trunkH, diameter: 0.55 * s, tessellation: 6 }, scene);
+        // Zufällig: lange Kiefer oder kurze Tanne (wie Arktis, aber grün)
+        const longTrunk = Math.random() > 0.5;
+        const trunkH    = longTrunk ? h * 0.40 : h * 0.12;
+        const trunkD    = (0.20 + h * 0.018) * s;
+        const trunk = BABYLON.MeshBuilder.CreateCylinder('tr_' + Math.random(),
+            { height: trunkH, diameter: trunkD, tessellation: 6 }, scene);
         trunk.position = new BABYLON.Vector3(x, trunkH / 2, z);
-        trunk.material = mat(scene, new BABYLON.Color3(0.38, 0.22, 0.09));
-        const top = BABYLON.MeshBuilder.CreateCylinder('tp', { height: topH, diameterTop: 0, diameterBottom: 3.2 * s, tessellation: 7 }, scene);
-        top.position = new BABYLON.Vector3(x, trunkH + topH * 0.35, z);
-        top.material = mat(scene, new BABYLON.Color3(0.12 + Math.random()*0.08, 0.42 + Math.random()*0.14, 0.09));
-        if (_shadowGen) { _shadowGen.addShadowCaster(trunk); _shadowGen.addShadowCaster(top); }
+        trunk.material = mat(scene, new BABYLON.Color3(0.36, 0.20, 0.08));
+        if (_shadowGen) _shadowGen.addShadowCaster(trunk);
+
+        const numL   = longTrunk ? 3 : 4;
+        const step   = (h - trunkH) / numL;
+        const gr     = 0.10 + Math.random() * 0.07;
+        const gg     = 0.38 + Math.random() * 0.14;
+        const greenM = mat(scene, new BABYLON.Color3(gr, gg, 0.08));
+
+        for (let i = 0; i < numL; i++) {
+            const t      = i / (numL - 1);
+            const botD   = (h * (0.58 - t * 0.36)) * s;
+            const layerH = step * 1.18;
+            const layerY = trunkH + i * step + layerH * 0.38;
+            const cone   = BABYLON.MeshBuilder.CreateCylinder('tp_' + Math.random(),
+                { height: layerH, diameterTop: 0, diameterBottom: botD, tessellation: 7 }, scene);
+            cone.position = new BABYLON.Vector3(x, layerY, z);
+            cone.material = greenM;
+            if (_shadowGen) _shadowGen.addShadowCaster(cone);
+        }
     }
 
     function buildTrees() {
         // Tribünen-Sperrzone: linke Seite x < -62, |z| < 28 — rechte Seite x > 62, |z| < 22
         function inStandZone(x, z) {
             return (x < -62 && Math.abs(z) < 28) || (x > 62 && Math.abs(z) < 22);
+        }
+        // See-Sperrzone (nur das Wasser selbst, kein Extra-Puffer) + Angler-Sperrzone
+        const MLK_CX = 0, MLK_CZ = 0, MLK_RX = 28, MLK_RZ = 12;
+        function inLakeZone(x, z) {
+            const dx = x - MLK_CX, dz = z - MLK_CZ;
+            // Nur den Wasserkörper sperren (Bäume am Uferrand sind ok)
+            if ((dx * dx) / (MLK_RX * MLK_RX) + (dz * dz) / (MLK_RZ * MLK_RZ) < 1.0) return true;
+            // Angler-Positionen: (±(MLK_RX+1), MLK_CZ) – Sperrradius 3
+            if ((x - (MLK_CX + MLK_RX + 1)) ** 2 + (z - MLK_CZ) ** 2 < 9) return true;
+            if ((x - (MLK_CX - MLK_RX - 1)) ** 2 + (z - MLK_CZ) ** 2 < 9) return true;
+            return false;
         }
         const count = 28;
         for (let i = 0; i < count; i++) {
@@ -476,13 +505,24 @@ const Renderer = (() => {
             if (inStandZone(tx, tz)) continue;
             buildTree(tx, tz, 3.5 + Math.random() * 3, 0.8 + Math.random() * 0.5);
         }
-        // Innenseite: lockere Bäume
-        for (let i = 0; i < 10; i++) {
-            const t  = (i / 10) * Math.PI * 2;
-            const rx = TRACK_A - 20 - Math.random() * 12;
-            const rz = TRACK_B - 10 - Math.random() * 8;
-            if (rx > 5 && rz > 5)
-                buildTree(Math.cos(t) * rx, Math.sin(t) * rz, 2.5 + Math.random() * 2, 0.7 + Math.random() * 0.4);
+        // Innenseite: lockere Bäume zufällig über das Innenfeld verteilt
+        const innerMaxX = TRACK_A - 12;  // bleibt innerhalb der Innenbahn
+        const innerMaxZ = TRACK_B - 8;
+        const placedInner = [];
+        const TREE_MIN_DIST = 7; // Mindestabstand zwischen Bäumen
+        let innerCount = 0, attempts = 0;
+        while (innerCount < 25 && attempts < 600) {
+            attempts++;
+            const tx = (Math.random() * 2 - 1) * innerMaxX;
+            const tz = (Math.random() * 2 - 1) * innerMaxZ;
+            // Muss im Innenfeld liegen (Ellipse der Innenbahn)
+            if ((tx * tx) / (innerMaxX * innerMaxX) + (tz * tz) / (innerMaxZ * innerMaxZ) > 0.92) continue;
+            if (inLakeZone(tx, tz)) continue;
+            // Kein anderer Baum zu nah
+            if (placedInner.some(([px, pz]) => (tx-px)**2 + (tz-pz)**2 < TREE_MIN_DIST**2)) continue;
+            placedInner.push([tx, tz]);
+            buildTree(tx, tz, 2.5 + Math.random() * 2, 0.7 + Math.random() * 0.4);
+            innerCount++;
         }
     }
 
@@ -763,6 +803,174 @@ const Renderer = (() => {
             block.receiveShadows = true;
         }
 
+        // ── Zugefrorener See im Innenfeld ─────────────────────────────────────
+        const LAKE_CX = 4, LAKE_CZ = -4;
+        const LAKE_RX = 22, LAKE_RZ = 13;
+
+        // Eis-Oberfläche
+        const lakeM = new BABYLON.StandardMaterial('lakeM', scene);
+        lakeM.diffuseColor  = new BABYLON.Color3(0.50, 0.74, 0.92);
+        lakeM.specularColor = new BABYLON.Color3(0.85, 0.93, 1.00);
+        lakeM.specularPower = 90;
+        _envMesh(lakeM);
+        const lakeDisc = _envMesh(BABYLON.MeshBuilder.CreateCylinder('lake',
+            { diameter: LAKE_RX * 2, height: 0.12, tessellation: 40 }, scene));
+        lakeDisc.scaling.z = LAKE_RZ / LAKE_RX;
+        lakeDisc.position  = new BABYLON.Vector3(LAKE_CX, 0.06, LAKE_CZ);
+        lakeDisc.material  = lakeM;
+        lakeDisc.receiveShadows = true;
+
+        // Schneerand (kleine Blöcke rund um den See)
+        const rimM = _envMesh(iceMat(0.88, 0.93, 0.98));
+        for (let i = 0; i < 36; i++) {
+            const a  = (i / 36) * Math.PI * 2;
+            const rx = LAKE_RX + 1.0, rz = LAKE_RZ + 1.0;
+            const rim = _envMesh(BABYLON.MeshBuilder.CreateBox('rim_' + i,
+                { width: 1.1, height: 0.28, depth: 1.1 }, scene));
+            rim.position = new BABYLON.Vector3(
+                LAKE_CX + Math.cos(a) * rx, 0.14, LAKE_CZ + Math.sin(a) * rz);
+            rim.material = rimM;
+        }
+
+        // Eisspalten (dunkle dünne Kästen auf der Oberfläche)
+        const crackM = _envMesh(iceMat(0.28, 0.48, 0.72));
+        [[0, 0, 16, 1.2], [-6, 3, 11, 0.9], [7, -5, 13, 1.0]].forEach(([cx, cz, len, ang], i) => {
+            const crack = _envMesh(BABYLON.MeshBuilder.CreateBox('crack_' + i,
+                { width: 0.07, height: 0.13, depth: len }, scene));
+            crack.position  = new BABYLON.Vector3(LAKE_CX + cx, 0.13, LAKE_CZ + cz);
+            crack.rotation.y = ang;
+            crack.material  = crackM;
+        });
+
+        // ── Figuren auf dem See ────────────────────────────────────────────────
+        function buildSkater(sx, sz, jacketR, jacketG, jacketB) {
+            const skinM   = _envMesh(iceMat(0.90, 0.72, 0.56));
+            const jacketM = _envMesh(iceMat(jacketR, jacketG, jacketB));
+            const pantM   = _envMesh(iceMat(0.12, 0.12, 0.20));
+            // Beine (leicht gespreizt)
+            [-0.14, 0.14].forEach((lx, i) => {
+                const leg = _envMesh(BABYLON.MeshBuilder.CreateCylinder('sleg'+i+'_'+sx,
+                    { diameter: 0.16, height: 0.65, tessellation: 5 }, scene));
+                leg.position  = new BABYLON.Vector3(sx + lx, 0.43, sz);
+                leg.rotation.z = lx * 0.35;
+                leg.material  = pantM;
+            });
+            // Körper
+            const body = _envMesh(BABYLON.MeshBuilder.CreateBox('sbdy_'+sx,
+                { width: 0.44, height: 0.58, depth: 0.30 }, scene));
+            body.position = new BABYLON.Vector3(sx, 1.07, sz);
+            body.material = jacketM;
+            // Arme ausgestreckt
+            [-0.42, 0.42].forEach((ax, i) => {
+                const arm = _envMesh(BABYLON.MeshBuilder.CreateBox('sarm'+i+'_'+sx,
+                    { width: 0.40, height: 0.13, depth: 0.13 }, scene));
+                arm.position = new BABYLON.Vector3(sx + ax, 1.10, sz);
+                arm.material = jacketM;
+            });
+            // Kopf
+            const head = _envMesh(BABYLON.MeshBuilder.CreateSphere('shd_'+sx,
+                { diameter: 0.30, segments: 5 }, scene));
+            head.position = new BABYLON.Vector3(sx, 1.53, sz);
+            head.material = skinM;
+            // Mütze
+            const hat = _envMesh(BABYLON.MeshBuilder.CreateCylinder('shat_'+sx,
+                { diameter: 0.28, height: 0.22, tessellation: 10 }, scene));
+            hat.position = new BABYLON.Vector3(sx, 1.72, sz);
+            hat.material = jacketM;
+        }
+
+        function buildFisherman(fx, fz, rotY = 0) {
+            const root   = new BABYLON.TransformNode('fish_'+fx+fz, scene);
+            root.position = new BABYLON.Vector3(fx, 0, fz);
+            root.rotation.y = rotY;
+
+            const skinM  = _envMesh(iceMat(0.90, 0.72, 0.56));
+            const coatM  = _envMesh(iceMat(0.16, 0.20, 0.34));
+            const pantM  = _envMesh(iceMat(0.20, 0.20, 0.28));
+            const woodM  = _envMesh(iceMat(0.40, 0.26, 0.12));
+            const hatM   = _envMesh(iceMat(0.72, 0.12, 0.10));  // rote Wintermütze
+
+            // Hocker mit 4 Beinen
+            const seat = _envMesh(BABYLON.MeshBuilder.CreateBox('fseat_'+fx,
+                { width: 0.54, height: 0.08, depth: 0.54 }, scene));
+            seat.position = new BABYLON.Vector3(0, 0.36, 0); seat.material = woodM; seat.parent = root;
+            [[-0.20,-0.20],[0.20,-0.20],[-0.20,0.20],[0.20,0.20]].forEach(([lx,lz],i) => {
+                const leg = _envMesh(BABYLON.MeshBuilder.CreateCylinder('fsl'+i+'_'+fx,
+                    { diameter: 0.07, height: 0.36, tessellation: 4 }, scene));
+                leg.position = new BABYLON.Vector3(lx, 0.18, lz); leg.material = woodM; leg.parent = root;
+            });
+
+            // Oberschenkel (waagrecht nach vorne)
+            [-0.13, 0.13].forEach((lx, i) => {
+                const thigh = _envMesh(BABYLON.MeshBuilder.CreateBox('fth'+i+'_'+fx,
+                    { width: 0.15, height: 0.14, depth: 0.52 }, scene));
+                thigh.position = new BABYLON.Vector3(lx, 0.40, 0.26); thigh.material = pantM; thigh.parent = root;
+                // Unterschenkel hängend
+                const shin = _envMesh(BABYLON.MeshBuilder.CreateCylinder('fsh'+i+'_'+fx,
+                    { diameter: 0.13, height: 0.52, tessellation: 5 }, scene));
+                shin.position = new BABYLON.Vector3(lx, 0.09, 0.50); shin.material = pantM; shin.parent = root;
+            });
+
+            // Körper + Schultern
+            const body = _envMesh(BABYLON.MeshBuilder.CreateBox('fbdy_'+fx,
+                { width: 0.44, height: 0.56, depth: 0.30 }, scene));
+            body.position = new BABYLON.Vector3(0, 0.72, 0.04); body.rotation.x = 0.32;
+            body.material = coatM; body.parent = root;
+            const shl = _envMesh(BABYLON.MeshBuilder.CreateBox('fshl_'+fx,
+                { width: 0.60, height: 0.16, depth: 0.26 }, scene));
+            shl.position = new BABYLON.Vector3(0, 1.01, 0.00); shl.material = coatM; shl.parent = root;
+
+            // Arme (nach vorne geneigt zur Rute)
+            [-0.24, 0.24].forEach((ax, i) => {
+                const arm = _envMesh(BABYLON.MeshBuilder.CreateBox('farm'+i+'_'+fx,
+                    { width: 0.14, height: 0.42, depth: 0.14 }, scene));
+                arm.position = new BABYLON.Vector3(ax, 0.84, 0.16); arm.rotation.x = 0.55;
+                arm.material = coatM; arm.parent = root;
+            });
+
+            // Kopf
+            const head = _envMesh(BABYLON.MeshBuilder.CreateSphere('fhd_'+fx,
+                { diameter: 0.29, segments: 6 }, scene));
+            head.position = new BABYLON.Vector3(0, 1.22, -0.04); head.material = skinM; head.parent = root;
+
+            // Wintermütze (Krempe + Körper + Pompom)
+            const hbrim = _envMesh(BABYLON.MeshBuilder.CreateCylinder('fhbr_'+fx,
+                { diameter: 0.34, height: 0.07, tessellation: 12 }, scene));
+            hbrim.position = new BABYLON.Vector3(0, 1.35, -0.04); hbrim.material = hatM; hbrim.parent = root;
+            const hbody = _envMesh(BABYLON.MeshBuilder.CreateCylinder('fhbd_'+fx,
+                { diameterBottom: 0.31, diameterTop: 0.24, height: 0.24, tessellation: 12 }, scene));
+            hbody.position = new BABYLON.Vector3(0, 1.49, -0.04); hbody.material = hatM; hbody.parent = root;
+            const pompom = _envMesh(BABYLON.MeshBuilder.CreateSphere('fpom_'+fx,
+                { diameter: 0.11, segments: 4 }, scene));
+            pompom.position = new BABYLON.Vector3(0, 1.63, -0.04);
+            pompom.material = _envMesh(iceMat(0.95, 0.95, 0.95)); pompom.parent = root;
+
+            // Angelrute (nach vorne/unten zum Loch)
+            const rod = _envMesh(BABYLON.MeshBuilder.CreateCylinder('frod_'+fx,
+                { diameter: 0.045, height: 1.6, tessellation: 4 }, scene));
+            rod.position = new BABYLON.Vector3(0.20, 0.92, 0.18); rod.rotation.x = -0.60;
+            rod.material = woodM; rod.parent = root;
+
+            // Angel-Loch
+            const hole = _envMesh(BABYLON.MeshBuilder.CreateCylinder('fhole_'+fx,
+                { diameter: 0.34, height: 0.15, tessellation: 16 }, scene));
+            hole.position = new BABYLON.Vector3(0.22, 0.07, 0.70);
+            hole.material = _envMesh(iceMat(0.10, 0.22, 0.48)); hole.parent = root;
+
+            // Kleiner roter Eimer
+            const bucket = _envMesh(BABYLON.MeshBuilder.CreateCylinder('fbkt_'+fx,
+                { diameterTop: 0.24, diameterBottom: 0.18, height: 0.26, tessellation: 10 }, scene));
+            bucket.position = new BABYLON.Vector3(-0.44, 0.13, 0.18);
+            bucket.material = _envMesh(iceMat(0.72, 0.14, 0.10)); bucket.parent = root;
+        }
+
+        // 3 Eisläufer (verschiedene Farben), 2 Angler
+        buildSkater(LAKE_CX,      LAKE_CZ,      0.82, 0.15, 0.18); // rote Jacke
+        buildSkater(LAKE_CX - 8,  LAKE_CZ + 5,  0.15, 0.25, 0.72); // blaue Jacke
+        buildSkater(LAKE_CX + 7,  LAKE_CZ - 4,  0.15, 0.58, 0.22); // grüne Jacke
+        buildFisherman(LAKE_CX - 3,  LAKE_CZ - 9,  0.3);
+        buildFisherman(LAKE_CX + 10, LAKE_CZ + 4, -1.1);
+
         // Eissäulen außerhalb der Strecke — positioniert mit LUT-Normalen
         function buildIceSpire(x, z, h) {
             const base = _envMesh(BABYLON.MeshBuilder.CreateCylinder('ispB_' + Math.random(),
@@ -778,51 +986,64 @@ const Renderer = (() => {
 
         // ── Schneetannen ──────────────────────────────────────────────────────
         function buildSnowTree(x, z, h) {
-            const trunkMat  = _envMesh(iceMat(0.28, 0.18, 0.10));
-            const snowCone  = () => _envMesh(iceMat(0.90, 0.96, 1.00));
-            // Stamm – deutlich höher (45 % der Gesamthöhe)
-            const trunkH = h * 0.45;
+            const trunkMat  = _envMesh(iceMat(0.68, 0.74, 0.82));  // hellgrauer Eisstamm
+            const coneMat   = () => {
+                const v = Math.random() * 0.12;
+                return _envMesh(iceMat(0.38 + v, 0.58 + v, 0.80 + v * 0.5)); // mittleres Eisblau
+            };
+
+            // Zufällig: lange Kiefer oder kurze Tanne
+            const longTrunk = Math.random() > 0.5;
+            const trunkH    = longTrunk ? h * 0.42 : h * 0.13;
+            const trunkD    = 0.20 + h * 0.016;
             const trunk = _envMesh(BABYLON.MeshBuilder.CreateCylinder('stt_' + Math.random(),
-                { diameter: 0.32 + h * 0.018, height: trunkH, tessellation: 6 }, scene));
+                { diameter: trunkD, height: trunkH, tessellation: 7 }, scene));
             trunk.position = new BABYLON.Vector3(x, trunkH / 2, z);
             trunk.material = trunkMat;
             if (_shadowGen) _shadowGen.addShadowCaster(trunk);
-            // 3 übereinander liegende Schnee-Etagen, beginnen knapp über Stammende
-            const coneH  = h * 0.24;
-            const layers = [
-                { bot: h * 0.52, y: trunkH + coneH * 0.38 },
-                { bot: h * 0.35, y: trunkH + coneH * 1.12 },
-                { bot: h * 0.20, y: trunkH + coneH * 1.82 },
-            ];
-            for (const l of layers) {
+
+            // 3 Etagen (Kiefer) oder 4 Etagen (Tanne) – alles weiß
+            const numL = longTrunk ? 3 : 4;
+            const step = (h - trunkH) / numL;
+
+            for (let i = 0; i < numL; i++) {
+                const t        = i / (numL - 1);
+                const layerBot = h * (0.56 - t * 0.36);
+                const layerH   = step * 1.15;
+                const layerY   = trunkH + i * step + layerH * 0.40;
                 const cone = _envMesh(BABYLON.MeshBuilder.CreateCylinder('stc_' + Math.random(),
-                    { diameterBottom: l.bot, diameterTop: 0, height: coneH, tessellation: 7 }, scene));
-                cone.position = new BABYLON.Vector3(x, l.y, z);
-                cone.material = snowCone();
+                    { diameterBottom: layerBot, diameterTop: 0, height: layerH, tessellation: 8 }, scene));
+                cone.position = new BABYLON.Vector3(x, layerY, z);
+                cone.material = coneMat();
                 if (_shadowGen) _shadowGen.addShadowCaster(cone);
             }
         }
 
-        // Schneetannen verteilt außerhalb der Strecke (abwechselnd mit Eissäulen)
-        for (let i = 0; i < 28; i++) {
-            const prog = (i / 28) * TRACK_LENGTH + 5;
-            const side = i % 3 === 0 ? -(TW/2 + 7 + Math.random() * 10) : (TW/2 + 7 + Math.random() * 12);
-            const tp   = _splinePos(_arcticLUT, prog, side);
-            buildSnowTree(tp.x, tp.z, 3.5 + Math.random() * 4.5);
+        // Schneetannen: Abstand-Check + See-Ausschlusszone
+        const _treePos  = [];
+        const MIN_TREE_GAP = 7.5;
+        for (let i = 0; i < 36; i++) {
+            const prog   = (i / 36) * TRACK_LENGTH + 3;
+            const inside = i % 2 === 0;
+            const offset = inside
+                ? -(TW/2 + 9  + Math.random() * 10)
+                :  (TW/2 + 9  + Math.random() * 12);
+            const tp = _splinePos(_arcticLUT, prog, offset);
+            // Nicht auf dem See oder in dessen Nähe platzieren
+            const dLx = (tp.x - LAKE_CX) / (LAKE_RX + 6);
+            const dLz = (tp.z - LAKE_CZ) / (LAKE_RZ + 6);
+            if (dLx * dLx + dLz * dLz < 1.0) continue;
+            // Nicht zu nah an anderen Bäumen
+            const tooClose = _treePos.some(p => {
+                const dx = p[0] - tp.x, dz = p[1] - tp.z;
+                return dx*dx + dz*dz < MIN_TREE_GAP * MIN_TREE_GAP;
+            });
+            if (tooClose) continue;
+            _treePos.push([tp.x, tp.z]);
+            buildSnowTree(tp.x, tp.z, 4 + Math.random() * 5);
         }
 
-        // Verteile Eissäulen außerhalb der Außenbahn (alle 8 Fortschrittseinheiten)
-        for (let i = 0; i < 36; i++) {
-            const prog = (i / 36) * TRACK_LENGTH;
-            const outerPos = _splinePos(_arcticLUT, prog, TW/2 + 8 + Math.random() * 14);
-            buildIceSpire(outerPos.x, outerPos.z, 3.5 + Math.random() * 5);
-        }
-        // Ein paar Gruppen auf der Innenseite
-        for (let i = 0; i < 18; i++) {
-            const prog = (i / 18) * TRACK_LENGTH + 14;
-            const innerPos = _splinePos(_arcticLUT, prog, -(TW/2 + 9 + Math.random() * 10));
-            buildIceSpire(innerPos.x, innerPos.z, 2.5 + Math.random() * 4);
-        }
+        // (Eissäulen entfernt – durch Schneetannen ersetzt)
 
         // Ziellinie entlang der Spline-Normalen bei progress=0
         {
@@ -878,8 +1099,10 @@ const Renderer = (() => {
             { width: 9.0, height: 1.5 }, scene));
         bannerPlane.position = new BABYLON.Vector3(gateMidX, gateH + 1.6, gateMidZ);
         bannerPlane.billboardMode = BABYLON.Mesh.BILLBOARDMODE_NONE;
-        // Banner parallel zum Balken ausrichten (gleiche Richtung wie beamDir)
-        bannerPlane.rotation.y = Math.atan2(beamDir.z, beamDir.x);
+        // Banner parallel zum Balken ausrichten:
+        // lookAt mit dem Vektor senkrecht zu beamDir → Banneroberfläche liegt parallel zum Balken
+        const perpDir = new BABYLON.Vector3(-beamDir.z, 0, beamDir.x);
+        bannerPlane.lookAt(bannerPlane.position.add(perpDir));
         const banTex = new BABYLON.DynamicTexture('bantex', { width: 512, height: 80 }, scene, false);
         const bCtx   = banTex.getContext();
         bCtx.fillStyle = 'rgba(12, 28, 55, 0.90)';
@@ -994,6 +1217,123 @@ const Renderer = (() => {
                 { path, radius: 0.12, tessellation: 4 }, scene));
             t.material = _envMesh(mat(scene, new BABYLON.Color3(1, 0.95, 0.2)));
         }
+
+        // ── See im Innenfeld ──────────────────────────────────────────────────
+        const MLK_CX = 0, MLK_CZ = 0, MLK_RX = 28, MLK_RZ = 12;
+
+        // Sandiges Ufer – glatte ovale Fläche (etwas größer als das Wasser)
+        const sandM = _envMesh(mat(scene, new BABYLON.Color3(0.76, 0.64, 0.40)));
+        const shoreDisc = _envMesh(BABYLON.MeshBuilder.CreateCylinder('mshore',
+            { diameter: (MLK_RX + 4) * 2, height: 0.10, tessellation: 40 }, scene));
+        shoreDisc.scaling.z = (MLK_RZ + 4) / (MLK_RX + 4);
+        shoreDisc.position  = new BABYLON.Vector3(MLK_CX, 0.05, MLK_CZ);
+        shoreDisc.material  = sandM;
+        shoreDisc.receiveShadows = true;
+
+        // Wasseroberfläche (liegt obendrauf, etwas kleiner → Sandrand sichtbar)
+        const waterM = new BABYLON.StandardMaterial('waterM', scene);
+        waterM.diffuseColor  = new BABYLON.Color3(0.08, 0.32, 0.78);
+        waterM.emissiveColor = new BABYLON.Color3(0.03, 0.12, 0.28);  // verhindert Grünstich durch Umgebungslicht
+        waterM.specularColor = new BABYLON.Color3(0.5, 0.75, 1.0);
+        waterM.specularPower = 90;
+        _envMesh(waterM);
+        const waterDisc = _envMesh(BABYLON.MeshBuilder.CreateCylinder('mlake',
+            { diameter: MLK_RX * 2, height: 0.10, tessellation: 40 }, scene));
+        waterDisc.scaling.z = MLK_RZ / MLK_RX;
+        waterDisc.position  = new BABYLON.Vector3(MLK_CX, 0.08, MLK_CZ);
+        waterDisc.material  = waterM;
+        waterDisc.receiveShadows = true;
+
+
+        // ── Angler (Sommer-Outfit) ─────────────────────────────────────────
+        function buildMeadowFisherman(fx, fz, rotY) {
+            const root   = new BABYLON.TransformNode('mfish_'+fx+fz, scene);
+            root.position = new BABYLON.Vector3(fx, 0, fz);
+            root.rotation.y = rotY;
+            const skinM  = _envMesh(mat(scene, new BABYLON.Color3(0.90, 0.72, 0.56)));
+            const shirtM = _envMesh(mat(scene, new BABYLON.Color3(0.88, 0.88, 0.92)));
+            const pantM  = _envMesh(mat(scene, new BABYLON.Color3(0.24, 0.36, 0.62)));
+            const hatM   = _envMesh(mat(scene, new BABYLON.Color3(0.82, 0.68, 0.30)));
+            const rodM   = _envMesh(mat(scene, new BABYLON.Color3(0.38, 0.22, 0.08)));
+            // Beine (sitzend, nach vorne gestreckt)
+            [-0.13, 0.13].forEach((lx, i) => {
+                const thigh = _envMesh(BABYLON.MeshBuilder.CreateBox('mth'+i+fx,
+                    { width: 0.15, height: 0.14, depth: 0.52 }, scene));
+                thigh.position = new BABYLON.Vector3(lx, 0.20, 0.26); thigh.material = pantM; thigh.parent = root;
+                const shin = _envMesh(BABYLON.MeshBuilder.CreateCylinder('msh'+i+fx,
+                    { diameter: 0.13, height: 0.44, tessellation: 5 }, scene));
+                shin.position = new BABYLON.Vector3(lx, 0.20, 0.50); shin.material = pantM; shin.parent = root;
+            });
+            // Körper
+            const body = _envMesh(BABYLON.MeshBuilder.CreateBox('mbdy_'+fx,
+                { width: 0.44, height: 0.54, depth: 0.28 }, scene));
+            body.position = new BABYLON.Vector3(0, 0.54, 0.02); body.rotation.x = 0.28;
+            body.material = shirtM; body.parent = root;
+            const shl = _envMesh(BABYLON.MeshBuilder.CreateBox('mshl_'+fx,
+                { width: 0.58, height: 0.15, depth: 0.26 }, scene));
+            shl.position = new BABYLON.Vector3(0, 0.82, 0); shl.material = shirtM; shl.parent = root;
+            // Kopf
+            const head = _envMesh(BABYLON.MeshBuilder.CreateSphere('mhd_'+fx,
+                { diameter: 0.29, segments: 6 }, scene));
+            head.position = new BABYLON.Vector3(0, 1.02, -0.02); head.material = skinM; head.parent = root;
+            // Strohhut (breit + flach)
+            const brim = _envMesh(BABYLON.MeshBuilder.CreateCylinder('mhb_'+fx,
+                { diameter: 0.58, height: 0.06, tessellation: 14 }, scene));
+            brim.position = new BABYLON.Vector3(0, 1.16, -0.02); brim.material = hatM; brim.parent = root;
+            const crown = _envMesh(BABYLON.MeshBuilder.CreateCylinder('mhc_'+fx,
+                { diameterBottom: 0.30, diameterTop: 0.26, height: 0.18, tessellation: 12 }, scene));
+            crown.position = new BABYLON.Vector3(0, 1.25, -0.02); crown.material = hatM; crown.parent = root;
+            // Arme + Rute
+            const arm = _envMesh(BABYLON.MeshBuilder.CreateBox('marm_'+fx,
+                { width: 0.40, height: 0.12, depth: 0.12 }, scene));
+            arm.position = new BABYLON.Vector3(0.22, 0.76, 0.14); arm.rotation.x = 0.5;
+            arm.material = shirtM; arm.parent = root;
+            const rod = _envMesh(BABYLON.MeshBuilder.CreateCylinder('mrod_'+fx,
+                { diameter: 0.04, height: 1.8, tessellation: 4 }, scene));
+            rod.position = new BABYLON.Vector3(0.24, 0.78, 0.22); rod.rotation.x = -0.52;
+            rod.material = rodM; rod.parent = root;
+            // Eimer
+            const bkt = _envMesh(BABYLON.MeshBuilder.CreateCylinder('mbkt_'+fx,
+                { diameterTop: 0.24, diameterBottom: 0.18, height: 0.26, tessellation: 10 }, scene));
+            bkt.position = new BABYLON.Vector3(-0.40, 0.13, 0.15);
+            bkt.material = _envMesh(mat(scene, new BABYLON.Color3(0.72, 0.14, 0.10))); bkt.parent = root;
+        }
+
+        // ── Schwimmer ─────────────────────────────────────────────────────
+        function buildSwimmer(sx, sz, rotY, capR, capG, capB) {
+            const root  = new BABYLON.TransformNode('swim_'+sx+sz, scene);
+            root.position = new BABYLON.Vector3(sx, 0, sz);
+            root.rotation.y = rotY;
+            const skinM = _envMesh(mat(scene, new BABYLON.Color3(0.90, 0.72, 0.56)));
+            const capM  = _envMesh(mat(scene, new BABYLON.Color3(capR, capG, capB)));
+            // Kopf (knapp über Wasser)
+            const head = _envMesh(BABYLON.MeshBuilder.CreateSphere('swh_'+sx+sz,
+                { diameter: 0.32, segments: 6 }, scene));
+            head.position = new BABYLON.Vector3(0, 0.22, 0); head.material = skinM; head.parent = root;
+            // Badekappe
+            const cap = _envMesh(BABYLON.MeshBuilder.CreateSphere('swc_'+sx+sz,
+                { diameter: 0.30, segments: 5 }, scene));
+            cap.scaling.y = 0.55; cap.position = new BABYLON.Vector3(0, 0.30, 0);
+            cap.material = capM; cap.parent = root;
+            // Arme (gestreckt, im Wasser)
+            [-0.55, 0.55].forEach((ax, i) => {
+                const arm = _envMesh(BABYLON.MeshBuilder.CreateBox('swa'+i+'_'+sx,
+                    { width: 0.52, height: 0.10, depth: 0.14 }, scene));
+                arm.position = new BABYLON.Vector3(ax, 0.08, 0.10);
+                arm.rotation.z = (ax > 0 ? -0.35 : 0.35);
+                arm.material = skinM; arm.parent = root;
+            });
+        }
+
+        // Platzierung
+        // Angler ans Ufer setzen (Punkt knapp außerhalb der See-Ellipse)
+        // Ost-Ufer: angle ≈ 0.25 rad → x = (28+3)*cos(0.25)=30.1, z = (12+3)*sin(0.25)=3.7
+        // Angler direkt am Wasserrand (1 Einheit Abstand vom Seerand)
+        buildMeadowFisherman(MLK_CX + MLK_RX + 1, MLK_CZ, -Math.PI / 2); // Ost-Ufer → schaut nach Westen (−X)
+        buildMeadowFisherman(MLK_CX - MLK_RX - 1, MLK_CZ,  Math.PI / 2); // West-Ufer → schaut nach Osten (+X)
+        buildSwimmer(MLK_CX + 6,  MLK_CZ + 2,  0.4,  0.85, 0.12, 0.12); // rote Kappe
+        buildSwimmer(MLK_CX - 8,  MLK_CZ - 3, -0.8,  0.12, 0.25, 0.82); // blaue Kappe
+        buildSwimmer(MLK_CX + 2,  MLK_CZ - 5,  1.2,  0.15, 0.72, 0.22); // grüne Kappe
 
         // Ziellinie
         for (let i = 0; i < 4; i++) {
@@ -1210,8 +1550,8 @@ const Renderer = (() => {
         scene.fogDensity = 0.004;
         scene.fogColor   = new BABYLON.Color3(0.7, 0.85, 1.0);
 
-        camera = new BABYLON.ArcRotateCamera('cam', -Math.PI/2, 0.7, 130, BABYLON.Vector3.Zero(), scene);
-        camera.lowerRadiusLimit = 40;  camera.upperRadiusLimit = 250;
+        camera = new BABYLON.ArcRotateCamera('cam', -Math.PI/2, 0.72, 45, BABYLON.Vector3.Zero(), scene);
+        camera.lowerRadiusLimit = 20;  camera.upperRadiusLimit = 120;
         camera.lowerBetaLimit   = 0.1; camera.upperBetaLimit   = 1.42; // nie unter den Horizont
         camera.attachControl(canvas, true);
 
@@ -1348,7 +1688,8 @@ const Renderer = (() => {
 
                 if (id === _playerId) {
                     if (cameraMode === 'overview') {
-                        camera.target = BABYLON.Vector3.Lerp(camera.target, posY, 0.06);
+                        // Je näher rangezoomt, desto schneller folgt die Kamera
+                        camera.target = posY.clone();
                     } else {
                         // Vorwärtsrichtung des Pferdes in World-Space
                         const fwd = BABYLON.Vector3.TransformNormal(
@@ -1636,6 +1977,11 @@ const Renderer = (() => {
         } else {
             scene.activeCamera = camera;
             camera.attachControl(engine.getRenderingCanvas(), true);
+            // Sofort auf aktuelle Pferdeposition springen, nicht langsam hinlerpen
+            if (_playerId && horses[_playerId]) {
+                const pos = horses[_playerId].root.position;
+                camera.target = new BABYLON.Vector3(pos.x, pos.y + 1, pos.z);
+            }
         }
     }
 
@@ -1807,6 +2153,15 @@ const Renderer = (() => {
                         btn.position = new BABYLON.Vector3(0, 1.90 + dy, -0.58);
                         btn.material = blackM; btn.parent = root;
                     });
+
+                    // Zylinderhut (Krempe + Korpus)
+                    const hatM = mat(scene, new BABYLON.Color3(0.08, 0.06, 0.10));
+                    const brim = BABYLON.MeshBuilder.CreateCylinder('smhb_'+obs.id,
+                        { diameter: 1.10, height: 0.10, tessellation: 16 }, scene);
+                    brim.position.y = 3.26; brim.material = hatM; brim.parent = root;
+                    const hatBody = BABYLON.MeshBuilder.CreateCylinder('smhc_'+obs.id,
+                        { diameter: 0.66, height: 0.70, tessellation: 14 }, scene);
+                    hatBody.position.y = 3.63; hatBody.material = hatM; hatBody.parent = root;
                 } else {
                     // 🌾 Strohballen
                     const bale = BABYLON.MeshBuilder.CreateCylinder('bale'+obs.id,
