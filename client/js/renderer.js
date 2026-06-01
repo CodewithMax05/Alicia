@@ -185,6 +185,18 @@ const Renderer = (() => {
         return m;
     }
 
+    // Gecachte Materialien: gleiche Farbe → selbes Material-Objekt, kein neuer Draw Call
+    const _matCache = new Map();
+    function cachedMat(r, g, b) {
+        const key = (r * 1000 | 0) + '_' + (g * 1000 | 0) + '_' + (b * 1000 | 0);
+        if (_matCache.has(key)) return _matCache.get(key);
+        const m = mat(scene, new BABYLON.Color3(r, g, b));
+        _matCache.set(key, m);
+        return m;
+    }
+    // Cache beim Map-Wechsel leeren (Materialien werden mit Meshes disposed)
+    function _clearMatCache() { _matCache.clear(); }
+
     function createHorse(scene, bodyColor) {
         const root      = new BABYLON.TransformNode('horse', scene);
         const bodyMat   = mat(scene, bodyColor);
@@ -313,7 +325,6 @@ const Renderer = (() => {
         // Emissive-Farbe für Hit-Flash (wird im Render-Loop gesetzt)
         bodyMat.emissiveColor = new BABYLON.Color3(0, 0, 0);
 
-        if (_shadowGen) root.getChildMeshes().forEach(m => _shadowGen.addShadowCaster(m));
 
         // Unsichtbares Anker-Mesh für Partikel (TransformNode funktioniert nicht als Emitter)
         const emitAnchor = BABYLON.MeshBuilder.CreateBox('ea_' + Math.random(), { size: 0.01 }, scene);
@@ -449,22 +460,32 @@ const Renderer = (() => {
         return { root, legMeshes, bodyMat, dustPs, hitPs, shieldBubble, turboPs, finishPs, blitzPs, slipPs };
     }
 
+    // Geteilte Baum-Materialien (einmal erstellt, von allen Bäumen geteilt)
+    let _treeTrunkMat = null;
+    const _treeGreenMats = [];
+    function _ensureTreeMats() {
+        if (_treeTrunkMat) return;
+        _treeTrunkMat = mat(scene, new BABYLON.Color3(0.36, 0.20, 0.08));
+        const greens = [
+            [0.10, 0.38], [0.13, 0.42], [0.11, 0.45], [0.15, 0.40], [0.12, 0.50],
+        ];
+        for (const [r, g] of greens)
+            _treeGreenMats.push(mat(scene, new BABYLON.Color3(r, g, 0.08)));
+    }
+
     function buildTree(x, z, h = 4, s = 1) {
-        // Zufällig: lange Kiefer oder kurze Tanne (wie Arktis, aber grün)
+        _ensureTreeMats();
         const longTrunk = Math.random() > 0.5;
         const trunkH    = longTrunk ? h * 0.40 : h * 0.12;
         const trunkD    = (0.20 + h * 0.018) * s;
         const trunk = BABYLON.MeshBuilder.CreateCylinder('tr_' + Math.random(),
             { height: trunkH, diameter: trunkD, tessellation: 6 }, scene);
         trunk.position = new BABYLON.Vector3(x, trunkH / 2, z);
-        trunk.material = mat(scene, new BABYLON.Color3(0.36, 0.20, 0.08));
-        if (_shadowGen) _shadowGen.addShadowCaster(trunk);
+        trunk.material = _treeTrunkMat;
 
         const numL   = longTrunk ? 3 : 4;
         const step   = (h - trunkH) / numL;
-        const gr     = 0.10 + Math.random() * 0.07;
-        const gg     = 0.38 + Math.random() * 0.14;
-        const greenM = mat(scene, new BABYLON.Color3(gr, gg, 0.08));
+        const greenM = _treeGreenMats[Math.floor(Math.random() * _treeGreenMats.length)];
 
         for (let i = 0; i < numL; i++) {
             const t      = i / (numL - 1);
@@ -475,7 +496,6 @@ const Renderer = (() => {
                 { height: layerH, diameterTop: 0, diameterBottom: botD, tessellation: 7 }, scene);
             cone.position = new BABYLON.Vector3(x, layerY, z);
             cone.material = greenM;
-            if (_shadowGen) _shadowGen.addShadowCaster(cone);
         }
     }
 
@@ -530,9 +550,9 @@ const Renderer = (() => {
         const ROWS = 4, COLS = 16;
         const COL_SPACING = 2.8;
         const spectatorColors = [
-            new BABYLON.Color3(1,0.2,0.2), new BABYLON.Color3(0.2,0.6,1),
-            new BABYLON.Color3(1,0.85,0.2), new BABYLON.Color3(0.8,0.2,0.8),
-            new BABYLON.Color3(1,0.55,0.1), new BABYLON.Color3(0.2,0.9,0.4),
+            cachedMat(1,0.2,0.2), cachedMat(0.2,0.6,1),
+            cachedMat(1,0.85,0.2), cachedMat(0.8,0.2,0.8),
+            cachedMat(1,0.55,0.1), cachedMat(0.2,0.9,0.4),
         ];
 
         // Tribüne auf der Außenseite der linken Kurve – weit genug weg von der Strecke
@@ -553,41 +573,39 @@ const Renderer = (() => {
                 width: ROW_STEP + 0.2, height: platH, depth: totalZ + COL_SPACING
             }, scene);
             plat.position     = new BABYLON.Vector3(x, platH / 2, 0);
-            plat.material     = mat(scene, new BABYLON.Color3(0.48, 0.48, 0.52));
-            plat.receiveShadows = true;
+            plat.material     = cachedMat(0.48, 0.48, 0.52);
+            plat
 
             for (let col = 0; col < COLS; col++) {
                 const z       = -totalZ / 2 + col * COL_SPACING;
-                const surface = platH;   // Y-Koordinate der Stufenoberfläche
+                const surface = platH;
 
-                // Sitzfläche
                 const seat = BABYLON.MeshBuilder.CreateBox(`st${row}_${col}`, {
                     width: 0.9, height: 0.18, depth: 0.72
                 }, scene);
                 seat.position     = new BABYLON.Vector3(x, surface + 0.09, z);
-                seat.material     = mat(scene, new BABYLON.Color3(0.2, 0.25, 0.75));
-                seat.receiveShadows = true;
+                seat.material     = cachedMat(0.2, 0.25, 0.75);
+                seat
 
-                // Zuschauer
                 if (Math.random() > 0.1) {
                     const bodyH = 0.82, headR = 0.19;
-                    const bodyBottom = surface + 0.18;   // steht auf der Sitzfläche
+                    const bodyBottom = surface + 0.18;
                     const bY = bodyBottom + bodyH / 2;
 
                     const body = BABYLON.MeshBuilder.CreateBox(`sp${row}_${col}`, {
                         width: 0.52, height: bodyH, depth: 0.4
                     }, scene);
                     body.position     = new BABYLON.Vector3(x, bY, z);
-                    body.material     = mat(scene, spectatorColors[Math.floor(Math.random() * spectatorColors.length)]);
-                    body.receiveShadows = true;
+                    body.material     = spectatorColors[Math.floor(Math.random() * spectatorColors.length)];
+                    body
                     _spectators.push({ body, baseY: bY, z });
 
                     const head = BABYLON.MeshBuilder.CreateSphere(`hd${row}_${col}`, {
                         diameter: headR * 2, segments: 4
                     }, scene);
                     head.position     = new BABYLON.Vector3(x, bodyBottom + bodyH + headR + 0.04, z);
-                    head.material     = mat(scene, new BABYLON.Color3(0.87, 0.67, 0.5));
-                    head.receiveShadows = true;
+                    head.material     = cachedMat(0.87, 0.67, 0.5);
+                    head
                 }
             }
         }
@@ -597,9 +615,9 @@ const Renderer = (() => {
     function buildStandsRight() {
         const ROWS = 3, COLS = 12, COL_SPACING = 2.8;
         const spectColors = [
-            new BABYLON.Color3(1,0.2,0.2),   new BABYLON.Color3(0.2,0.6,1),
-            new BABYLON.Color3(1,0.85,0.2),  new BABYLON.Color3(0.8,0.2,0.8),
-            new BABYLON.Color3(1,0.55,0.1),  new BABYLON.Color3(0.2,0.9,0.4),
+            cachedMat(1,0.2,0.2),   cachedMat(0.2,0.6,1),
+            cachedMat(1,0.85,0.2),  cachedMat(0.8,0.2,0.8),
+            cachedMat(1,0.55,0.1),  cachedMat(0.2,0.9,0.4),
         ];
         const ROW0_X   = TRACK_A + 15;
         const ROW_STEP = 3.2, ROW_RISE = 1.6;
@@ -614,16 +632,16 @@ const Renderer = (() => {
                 width: ROW_STEP + 0.2, height: platH, depth: totalZ + COL_SPACING
             }, scene);
             plat.position = new BABYLON.Vector3(x, platH / 2, 0);
-            plat.material = mat(scene, new BABYLON.Color3(0.48, 0.48, 0.52));
-            plat.receiveShadows = true;
+            plat.material = cachedMat(0.48, 0.48, 0.52);
+            plat
 
             for (let col = 0; col < COLS; col++) {
                 const z = -totalZ / 2 + col * COL_SPACING;
                 const seat = BABYLON.MeshBuilder.CreateBox(`str${row}_${col}`,
                     { width: 0.9, height: 0.18, depth: 0.72 }, scene);
                 seat.position = new BABYLON.Vector3(x, platH + 0.09, z);
-                seat.material = mat(scene, new BABYLON.Color3(0.72, 0.18, 0.18));
-                seat.receiveShadows = true;
+                seat.material = cachedMat(0.72, 0.18, 0.18);
+                seat
 
                 if (Math.random() > 0.12) {
                     const bH = 0.82, hR = 0.19;
@@ -632,14 +650,14 @@ const Renderer = (() => {
                     const body = BABYLON.MeshBuilder.CreateBox(`spr${row}_${col}`,
                         { width: 0.52, height: bH, depth: 0.4 }, scene);
                     body.position = new BABYLON.Vector3(x, bY2, z);
-                    body.material = mat(scene, spectColors[Math.floor(Math.random() * spectColors.length)]);
-                    body.receiveShadows = true;
+                    body.material = spectColors[Math.floor(Math.random() * spectColors.length)];
+                    body
                     _spectators.push({ body, baseY: bY2, z });
 
                     const head = BABYLON.MeshBuilder.CreateSphere(`hdr${row}_${col}`,
                         { diameter: hR * 2, segments: 4 }, scene);
                     head.position = new BABYLON.Vector3(x, bBot + bH + hR + 0.04, z);
-                    head.material = mat(scene, new BABYLON.Color3(0.87, 0.67, 0.5));
+                    head.material = cachedMat(0.87, 0.67, 0.5);
                 }
             }
         }
@@ -659,7 +677,7 @@ const Renderer = (() => {
             board.position = new BABYLON.Vector3(pos.x, 0.65, pos.z);
             board.lookAt(new BABYLON.Vector3(nxt.x, 0.65, nxt.z));
             board.material = i % 2 === 0 ? redMat : whiteMat;
-            board.receiveShadows = true;
+            board
         }
     }
 
@@ -715,7 +733,7 @@ const Renderer = (() => {
                 { height: poleH, diameter: 0.45, tessellation: 8 }, scene);
             pole.position = new BABYLON.Vector3(x, poleH / 2, z);
             pole.material = poleMat;
-            if (_shadowGen) _shadowGen.addShadowCaster(pole);
+            
 
             // 3 Scheinwerfer nebeneinander am Mastenkopf
             for (let j = 0; j < 3; j++) {
@@ -747,7 +765,7 @@ const Renderer = (() => {
         const ground = _envMesh(BABYLON.MeshBuilder.CreateGround('ground',
             { width: 420, height: 260 }, scene));
         ground.material = snowMat();
-        ground.receiveShadows = true;
+        ground
 
         // Strecken-Ribbon entlang des Spline-Pfades (256 Segmente)
         const SAMPLES = 256;
@@ -767,7 +785,7 @@ const Renderer = (() => {
         trackMat.specularPower   = 48;
         trackMat.backFaceCulling = false;
         ribbon.material = _envMesh(trackMat);
-        ribbon.receiveShadows = true;
+        ribbon
 
         // Begrenzungslinien (weiß)
         for (const path of [inner, outer]) {
@@ -800,7 +818,7 @@ const Renderer = (() => {
             block.position = new BABYLON.Vector3(pos.x, 0.37, pos.z);
             block.lookAt(new BABYLON.Vector3(nxt.x, 0.37, nxt.z));
             block.material = iceBlockMat;
-            block.receiveShadows = true;
+            block
         }
 
         // ── Zugefrorener See im Innenfeld ─────────────────────────────────────
@@ -818,7 +836,7 @@ const Renderer = (() => {
         lakeDisc.scaling.z = LAKE_RZ / LAKE_RX;
         lakeDisc.position  = new BABYLON.Vector3(LAKE_CX, 0.06, LAKE_CZ);
         lakeDisc.material  = lakeM;
-        lakeDisc.receiveShadows = true;
+        lakeDisc
 
         // Schneerand (kleine Blöcke rund um den See)
         const rimM = _envMesh(iceMat(0.88, 0.93, 0.98));
@@ -981,16 +999,17 @@ const Renderer = (() => {
                 { diameterTop: 0, diameterBottom: 0.8, height: h*0.65, tessellation: 6 }, scene));
             top.position = new BABYLON.Vector3(x, h*0.55 + h*0.325, z);
             top.material = _envMesh(iceMat(0.65, 0.85, 0.98));
-            if (_shadowGen) { _shadowGen.addShadowCaster(base); _shadowGen.addShadowCaster(top); }
         }
 
         // ── Schneetannen ──────────────────────────────────────────────────────
+        // Geteilte Schneebaum-Materialien
+        const _snowTrunkMat = _envMesh(iceMat(0.68, 0.74, 0.82));
+        const _snowConeMats = [0, 0.04, 0.08, 0.12].map(v =>
+            _envMesh(iceMat(0.38 + v, 0.58 + v, 0.80 + v * 0.5)));
+
         function buildSnowTree(x, z, h) {
-            const trunkMat  = _envMesh(iceMat(0.68, 0.74, 0.82));  // hellgrauer Eisstamm
-            const coneMat   = () => {
-                const v = Math.random() * 0.12;
-                return _envMesh(iceMat(0.38 + v, 0.58 + v, 0.80 + v * 0.5)); // mittleres Eisblau
-            };
+            const trunkMat = _snowTrunkMat;
+            const coneMat  = () => _snowConeMats[Math.floor(Math.random() * _snowConeMats.length)];
 
             // Zufällig: lange Kiefer oder kurze Tanne
             const longTrunk = Math.random() > 0.5;
@@ -1000,7 +1019,6 @@ const Renderer = (() => {
                 { diameter: trunkD, height: trunkH, tessellation: 7 }, scene));
             trunk.position = new BABYLON.Vector3(x, trunkH / 2, z);
             trunk.material = trunkMat;
-            if (_shadowGen) _shadowGen.addShadowCaster(trunk);
 
             // 3 Etagen (Kiefer) oder 4 Etagen (Tanne) – alles weiß
             const numL = longTrunk ? 3 : 4;
@@ -1015,7 +1033,6 @@ const Renderer = (() => {
                     { diameterBottom: layerBot, diameterTop: 0, height: layerH, tessellation: 8 }, scene));
                 cone.position = new BABYLON.Vector3(x, layerY, z);
                 cone.material = coneMat();
-                if (_shadowGen) _shadowGen.addShadowCaster(cone);
             }
         }
 
@@ -1132,20 +1149,21 @@ const Renderer = (() => {
 
         // ── Arktis-Zuschauer ──────────────────────────────────────────────────
         const lut = _arcticLUT;
-        const spectCols = [
+        // Geteilte Materialpalette für alle Zuschauer
+        const _spectMats = [
             new BABYLON.Color3(0.85, 0.12, 0.12),
             new BABYLON.Color3(0.18, 0.42, 0.88),
             new BABYLON.Color3(0.88, 0.88, 0.95),
             new BABYLON.Color3(0.15, 0.62, 0.28),
             new BABYLON.Color3(0.90, 0.65, 0.10),
             new BABYLON.Color3(0.60, 0.18, 0.75),
-        ];
-        const hatCols = [
+        ].map(c => _envMesh(mat(scene, c)));
+        const _hatMats = [
             new BABYLON.Color3(0.18, 0.18, 0.50),
             new BABYLON.Color3(0.55, 0.12, 0.12),
             new BABYLON.Color3(0.25, 0.25, 0.25),
             new BABYLON.Color3(0.70, 0.50, 0.10),
-        ];
+        ].map(c => _envMesh(mat(scene, c)));
         const skinM2 = _envMesh(mat(scene, new BABYLON.Color3(0.90, 0.72, 0.56)));
         let _spIdx = 0;
 
@@ -1153,8 +1171,8 @@ const Renderer = (() => {
             const bodyH = 0.80, headR = 0.18;
             const baseY = bodyH / 2 + 0.01;
             const si = _spIdx++;
-            const coat = _envMesh(mat(scene, spectCols[si % spectCols.length]));
-            const hm   = _envMesh(mat(scene, hatCols[si % hatCols.length]));
+            const coat = _spectMats[si % _spectMats.length];
+            const hm   = _hatMats[si % _hatMats.length];
 
             const body = _envMesh(BABYLON.MeshBuilder.CreateBox('arcsp_' + si,
                 { width: 0.50, height: bodyH, depth: 0.38 }, scene));
@@ -1184,8 +1202,34 @@ const Renderer = (() => {
             });
         }
 
-        // Dichte Gruppe platzieren: mehrere Reihen auf beiden Seiten
+        // Dichte Gruppe platzieren und Meshes zu je 3 Meshes mergen (Bodies/Heads/Hats)
+        // → statt 180 Draw Calls nur 3 pro Gruppe + 1 Eintrag in _spectators
+        // Vertex-Farbe auf alle Vertices eines Meshes setzen (für Merge mit Farben)
+        function _applyVertexColor(mesh, r, g, b) {
+            const pos = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+            if (!pos) return;
+            const cols = new Float32Array(pos.length / 3 * 4);
+            for (let i = 0; i < pos.length / 3; i++) {
+                cols[i*4]=r; cols[i*4+1]=g; cols[i*4+2]=b; cols[i*4+3]=1;
+            }
+            mesh.setVerticesData(BABYLON.VertexBuffer.ColorKind, cols);
+        }
+
+        // Material das Vertex-Farben nutzt (einmal erstellt, geteilt)
+        const _vcMat = (() => {
+            const m = new BABYLON.StandardMaterial('vcm', scene);
+            m.diffuseColor = new BABYLON.Color3(1, 1, 1);
+            return _envMesh(m);
+        })();
+
         function placeGroup(centerProg, spread, rows, perRow) {
+            const bodies = [], heads = [], hats = [];
+            let centerX = 0, centerZ = 0, count = 0;
+
+            const COAT_COLORS = [[0.85,0.12,0.12],[0.18,0.42,0.88],[0.88,0.88,0.95],
+                                 [0.15,0.62,0.28],[0.90,0.65,0.10],[0.60,0.18,0.75]];
+            const HAT_COLORS  = [[0.18,0.18,0.50],[0.55,0.12,0.12],[0.25,0.25,0.25],[0.70,0.50,0.10]];
+
             for (let side of [-1, 1]) {
                 for (let row = 0; row < rows; row++) {
                     const rowDist = TW / 2 + 7 + row * 2.2;
@@ -1193,20 +1237,67 @@ const Renderer = (() => {
                         const offset = (col / (perRow - 1) - 0.5) * spread;
                         const prog   = (centerProg + offset * 8 + TRACK_LENGTH) % TRACK_LENGTH;
                         const p      = _splinePos(lut, prog, rowDist * side);
-                        // See vermeiden
                         const dLx = p.x - 4, dLz = p.z - (-4);
                         if (dLx * dLx / (22 * 22) + dLz * dLz / (13 * 13) < 1.3) continue;
-                        placeArcticSpectator(p.x, p.z, prog);
+
+                        const bodyH = 0.80, headR = 0.18;
+                        const si = _spIdx++;
+                        const lp = _splinePos(lut, prog, 0);
+                        const angle = Math.atan2(lp.x - p.x, lp.z - p.z);
+                        const cc = COAT_COLORS[si % COAT_COLORS.length];
+                        const hc = HAT_COLORS[si % HAT_COLORS.length];
+
+                        const body = BABYLON.MeshBuilder.CreateBox('gb_'+si,
+                            { width: 0.50, height: bodyH, depth: 0.38 }, scene);
+                        body.position = new BABYLON.Vector3(p.x, bodyH/2+0.01, p.z);
+                        body.rotation.y = angle;
+                        _applyVertexColor(body, cc[0], cc[1], cc[2]);
+
+                        const head = BABYLON.MeshBuilder.CreateSphere('gh_'+si,
+                            { diameter: headR*2, segments: 4 }, scene);
+                        head.position = new BABYLON.Vector3(p.x, bodyH+headR+0.04, p.z);
+                        head.rotation.y = angle;
+                        _applyVertexColor(head, 0.90, 0.72, 0.56);
+
+                        const hat = BABYLON.MeshBuilder.CreateCylinder('ghat_'+si,
+                            { diameterTop: 0.20, diameterBottom: 0.26, height: 0.22, tessellation: 8 }, scene);
+                        hat.position = new BABYLON.Vector3(p.x, bodyH+headR*2+0.12, p.z);
+                        hat.rotation.y = angle;
+                        _applyVertexColor(hat, hc[0], hc[1], hc[2]);
+
+                        bodies.push(body); heads.push(head); hats.push(hat);
+                        centerX += p.x; centerZ += p.z; count++;
                     }
                 }
             }
+
+            if (bodies.length === 0) return;
+            centerX /= count; centerZ /= count;
+
+            // Mergen → 3 Draw Calls, Farben bleiben via Vertex-Colors erhalten
+            const mergedBody = BABYLON.Mesh.MergeMeshes(bodies, true, true, undefined, false, false);
+            const mergedHead = BABYLON.Mesh.MergeMeshes(heads, true, true, undefined, false, false);
+            const mergedHat  = BABYLON.Mesh.MergeMeshes(hats,  true, true, undefined, false, false);
+            if (!mergedBody) return;
+
+            mergedBody.material = _vcMat;
+            mergedHead.material = _vcMat;
+            mergedHat.material  = _vcMat;
+            _envMesh(mergedBody); _envMesh(mergedHead); _envMesh(mergedHat);
+
+            _spectators.push({
+                body: mergedBody, head: mergedHead, hat: mergedHat,
+                baseY: 0, headBaseY: 0, hatBaseY: 0,
+                worldX: centerX, worldZ: centerZ,
+                type: 'arctic', _lastDist: 9999, _cheerTimer: -1,
+            });
         }
 
-        // ── Große Gruppe: Zielbereich (etwas nach der Ziellinie) ────────────
-        placeGroup(40,  14, 3, 10);  // 3 Reihen × 10 Leute × 2 Seiten ≈ 60
+        // ── Große Gruppe: Zielbereich ────────────────────────────────────────
+        placeGroup(40,  14, 3, 10);
 
-        // ── Große Gruppe: Halbzeit (etwas nach dem Halbzeit-Trigger) ─────────
-        placeGroup(550, 14, 3, 10);  // gleiches Schema
+        // ── Große Gruppe: Halbzeit ────────────────────────────────────────────
+        placeGroup(550, 14, 3, 10);
 
         // ── Einzelne Zuschauer: Rest der Strecke ─────────────────────────────
         // Bereiche nahe Ziel/Halbzeit überspringen (bereits bebaut)
@@ -1254,6 +1345,10 @@ const Renderer = (() => {
         _spectators.length = 0;
         _flagMeshes.length = 0;
         _finishBanner = null;
+        // Geteilte Baum-Materialien zurücksetzen (werden neu erstellt bei nächstem buildTree)
+        _treeTrunkMat = null;
+        _treeGreenMats.length = 0;
+        _clearMatCache();
 
         // Spline-LUT setzen / zurücksetzen
         if (mapId === 'arctic') {
@@ -1283,7 +1378,7 @@ const Renderer = (() => {
         const ground = _envMesh(BABYLON.MeshBuilder.CreateGround('ground',
             { width: 340, height: 220 }, scene));
         ground.material = _envMesh(mat(scene, new BABYLON.Color3(0.22, 0.55, 0.22)));
-        ground.receiveShadows = true;
+        ground
 
         // Strecken-Ribbon
         const inner = [], outer = [];
@@ -1296,7 +1391,7 @@ const Renderer = (() => {
             { pathArray: [inner, outer], closePath: true }, scene));
         ribbon.material = _envMesh(mat(scene, new BABYLON.Color3(0.83, 0.73, 0.53)));
         ribbon.material.backFaceCulling = false;
-        ribbon.receiveShadows = true;
+        ribbon
 
         for (const path of [inner, outer]) {
             const b = _envMesh(BABYLON.MeshBuilder.CreateTube('border',
@@ -1325,7 +1420,7 @@ const Renderer = (() => {
         shoreDisc.scaling.z = (MLK_RZ + 4) / (MLK_RX + 4);
         shoreDisc.position  = new BABYLON.Vector3(MLK_CX, 0.05, MLK_CZ);
         shoreDisc.material  = sandM;
-        shoreDisc.receiveShadows = true;
+        shoreDisc
 
         // Wasseroberfläche (liegt obendrauf, etwas kleiner → Sandrand sichtbar)
         const waterM = new BABYLON.StandardMaterial('waterM', scene);
@@ -1339,7 +1434,7 @@ const Renderer = (() => {
         waterDisc.scaling.z = MLK_RZ / MLK_RX;
         waterDisc.position  = new BABYLON.Vector3(MLK_CX, 0.08, MLK_CZ);
         waterDisc.material  = waterM;
-        waterDisc.receiveShadows = true;
+        waterDisc
 
 
         // ── Angler (Sommer-Outfit) ─────────────────────────────────────────
@@ -1659,10 +1754,7 @@ const Renderer = (() => {
         _sun = new BABYLON.DirectionalLight('sun', new BABYLON.Vector3(-1, -2, -0.5), scene);
         _sun.position  = new BABYLON.Vector3(80, 120, 60);
         _sun.intensity = 1.4;
-        const shadowGen = new BABYLON.ShadowGenerator(1024, _sun);
-        shadowGen.useBlurExponentialShadowMap = true;
-        shadowGen.blurKernel = 8;
-        _shadowGen = shadowGen;
+        _shadowGen = null; // Schatten deaktiviert
 
         _amb = new BABYLON.HemisphericLight('amb', new BABYLON.Vector3(0,1,0), scene);
         _amb.intensity    = 0.55;
@@ -1868,13 +1960,14 @@ const Renderer = (() => {
                     for (const sp of _spectators) {
                         if (sp.type !== 'arctic') continue;
                         const dx = hpos.x - sp.worldX, dz = hpos.z - sp.worldZ;
-                        const dist = Math.sqrt(dx * dx + dz * dz);
+                        const dist2 = dx * dx + dz * dz;  // Quadrat, kein sqrt nötig
 
                         // Neues Jubeln auslösen wenn Pferd in Radius kommt
-                        if (dist < 13 && sp._lastDist >= 13) {
+                        const r2 = 169; // 13²
+                        if (dist2 < r2 && sp._lastDist >= r2) {
                             sp._cheerTimer = wNow;
                         }
-                        sp._lastDist = dist;
+                        sp._lastDist = dist2;
 
                         // Jubel-Animation: sinus-Hüpfer über 1.2 Sekunden
                         if (sp._cheerTimer >= 0) {
@@ -1959,14 +2052,14 @@ const Renderer = (() => {
             if (rx) mesh.rotation.x = rx;
             if (rz) mesh.rotation.z = rz;
             mesh.material = m; mesh.parent = rRoot;
-            if (_shadowGen) _shadowGen.addShadowCaster(mesh);
+            
             return mesh;
         }
         function rc(opt, pos, m) {
             const mesh = BABYLON.MeshBuilder.CreateCylinder('rc_' + Math.random(), opt, scene);
             mesh.position = new BABYLON.Vector3(pos[0], pos[1], pos[2]);
             mesh.material = m; mesh.parent = rRoot;
-            if (_shadowGen) _shadowGen.addShadowCaster(mesh);
+            
             return mesh;
         }
 
@@ -2011,7 +2104,7 @@ const Renderer = (() => {
             dome.scaling.y = 0.74;
             dome.position  = new BABYLON.Vector3(0, 1.29, 0.12);
             dome.material  = helmM; dome.parent = rRoot;
-            if (_shadowGen) _shadowGen.addShadowCaster(dome);
+            
             // Schirm: flacher Zylinder, Mitte an Kuppelvorderkante (z=0.40) →
             // hintere Hälfte steckt im Dome, vordere Hälfte = Halbkreis-Schirm
             const _brim = BABYLON.MeshBuilder.CreateCylinder('br_' + Math.random(),
@@ -2019,7 +2112,7 @@ const Renderer = (() => {
             _brim.position  = new BABYLON.Vector3(0, 1.17, 0.40);
             _brim.rotation.x = 0.10;
             _brim.material  = rimM; _brim.parent = rRoot;
-            if (_shadowGen) _shadowGen.addShadowCaster(_brim);
+            
 
         } else if (helmetIdx === 1) {
             // 🤠 Cowboyhut — immer warmbraun, Krone läuft oben natürlich aus
@@ -2032,7 +2125,7 @@ const Renderer = (() => {
             _cd.scaling.y = 0.58;
             _cd.position  = new BABYLON.Vector3(0, 1.40, 0.04);
             _cd.material  = hatM; _cd.parent = rRoot;
-            if (_shadowGen) _shadowGen.addShadowCaster(_cd);
+            
             rc({diameter:0.47, height:0.05, tessellation:10},                         [0, 1.22, 0.04], bandM); // Hutband
 
         } else if (helmetIdx === 2) {
@@ -2178,9 +2271,9 @@ const Renderer = (() => {
 
                     if (isArcticMap) {
                         // ❄️ Eisschlitten
-                        const sledMat  = mat(scene, new BABYLON.Color3(0.55, 0.78, 0.95));
-                        const iceMat2  = mat(scene, new BABYLON.Color3(0.72, 0.90, 1.00));
-                        const darkIce  = mat(scene, new BABYLON.Color3(0.35, 0.58, 0.80));
+                        const sledMat  = cachedMat(0.55, 0.78, 0.95);
+                        const iceMat2  = cachedMat(0.72, 0.90, 1.00);
+                        const darkIce  = cachedMat(0.35, 0.58, 0.80);
                         // Kufen (zwei flache Bögen)
                         [-0.85, 0.85].forEach((x, i) => {
                             const runner = BABYLON.MeshBuilder.CreateBox('run'+i+'_'+obs.id,
@@ -2203,22 +2296,22 @@ const Renderer = (() => {
                         // 🌾 Heuwagen
                         const body = BABYLON.MeshBuilder.CreateBox('cbody'+obs.id, { width: 3.4, height: 0.55, depth: 2.0 }, scene);
                         body.position.y = 0.45;
-                        body.material   = mat(scene, new BABYLON.Color3(0.58, 0.36, 0.13));
+                        body.material   = cachedMat(0.58, 0.36, 0.13);
                         body.parent     = root;
                         const hay = BABYLON.MeshBuilder.CreateBox('chay'+obs.id, { width: 2.8, height: 1.85, depth: 1.5 }, scene);
                         hay.position.y = 1.65;
-                        hay.material   = mat(scene, new BABYLON.Color3(0.90, 0.72, 0.12));
+                        hay.material   = cachedMat(0.90, 0.72, 0.12);
                         hay.parent     = root;
                         [-1.55, 1.55].forEach((x, i) => {
                             const plank = BABYLON.MeshBuilder.CreateBox('cplk'+i+'_'+obs.id, { width: 0.14, height: 1.4, depth: 1.9 }, scene);
                             plank.position = new BABYLON.Vector3(x, 0.95, 0);
-                            plank.material = mat(scene, new BABYLON.Color3(0.50, 0.30, 0.10));
+                            plank.material = cachedMat(0.50, 0.30, 0.10);
                             plank.parent   = root;
                         });
                     }
 
                     root.lookAt(new BABYLON.Vector3(cNxt.x, 0, cNxt.z));
-                    root.getChildMeshes().forEach(m => { m.receiveShadows = true; if (_shadowGen) _shadowGen.addShadowCaster(m); });
+                    root.getChildMeshes().forEach(m => { m });
                     obstacleMeshes[obs.id] = root;
                 }
                 continue;
@@ -2237,9 +2330,9 @@ const Renderer = (() => {
 
                 if (isArcticMap) {
                     // ☃️ Schneemann mit Möhre, Augen und Knöpfen
-                    const snowM   = mat(scene, new BABYLON.Color3(0.96, 0.98, 1.00));
-                    const blackM  = mat(scene, new BABYLON.Color3(0.06, 0.06, 0.10));
-                    const carrotM = mat(scene, new BABYLON.Color3(1.00, 0.42, 0.02));
+                    const snowM   = cachedMat(0.96, 0.98, 1.00);
+                    const blackM  = cachedMat(0.06, 0.06, 0.10);
+                    const carrotM = cachedMat(1.00, 0.42, 0.02);
 
                     // Unterkugel (leicht abgeflacht)
                     const bot = BABYLON.MeshBuilder.CreateSphere('smb_'+obs.id,
@@ -2289,7 +2382,7 @@ const Renderer = (() => {
                     });
 
                     // Zylinderhut (Krempe + Korpus)
-                    const hatM = mat(scene, new BABYLON.Color3(0.08, 0.06, 0.10));
+                    const hatM = cachedMat(0.08, 0.06, 0.10);
                     const brim = BABYLON.MeshBuilder.CreateCylinder('smhb_'+obs.id,
                         { diameter: 1.10, height: 0.10, tessellation: 16 }, scene);
                     brim.position.y = 3.26; brim.material = hatM; brim.parent = root;
@@ -2302,18 +2395,18 @@ const Renderer = (() => {
                         { diameter: 1.85, height: 1.75, tessellation: 14 }, scene);
                     bale.rotation.z = Math.PI / 2;
                     bale.position.y = 0.9;
-                    bale.material   = mat(scene, new BABYLON.Color3(0.88, 0.68, 0.10));
+                    bale.material   = cachedMat(0.88, 0.68, 0.10);
                     bale.parent     = root;
                     const twine = BABYLON.MeshBuilder.CreateTorus('twn'+obs.id,
                         { diameter: 1.88, thickness: 0.10, tessellation: 24 }, scene);
                     twine.rotation.y = Math.PI / 2;
                     twine.position.y = 0.9;
-                    twine.material   = mat(scene, new BABYLON.Color3(0.45, 0.28, 0.06));
+                    twine.material   = cachedMat(0.45, 0.28, 0.06);
                     twine.parent     = root;
                 }
 
                 root.lookAt(new BABYLON.Vector3(nxt.x, 0, nxt.z));
-                root.getChildMeshes().forEach(m => { m.receiveShadows = true; if (_shadowGen) _shadowGen.addShadowCaster(m); });
+                root.getChildMeshes().forEach(m => { m });
                 obstacleMeshes[obs.id] = root;
                 continue;
             }
@@ -2325,8 +2418,8 @@ const Renderer = (() => {
 
                 if (isArcticMap) {
                     // 🧊 Eiswand – drei gestapelte Eisblöcke
-                    const wallIce  = mat(scene, new BABYLON.Color3(0.55, 0.80, 0.98));
-                    const darkIce2 = mat(scene, new BABYLON.Color3(0.38, 0.62, 0.88));
+                    const wallIce  = cachedMat(0.55, 0.80, 0.98);
+                    const darkIce2 = cachedMat(0.38, 0.62, 0.88);
                     wallIce.specularColor  = new BABYLON.Color3(0.7, 0.85, 1.0);
                     wallIce.specularPower  = 48;
                     darkIce2.specularColor = new BABYLON.Color3(0.6, 0.75, 0.95);
@@ -2347,20 +2440,20 @@ const Renderer = (() => {
                         const post = BABYLON.MeshBuilder.CreateCylinder('post'+i+'_'+obs.id,
                             { diameter: 0.28, height: 3.2, tessellation: 7 }, scene);
                         post.position = new BABYLON.Vector3(x, 1.6, 0);
-                        post.material = mat(scene, new BABYLON.Color3(0.62, 0.40, 0.16));
+                        post.material = cachedMat(0.62, 0.40, 0.16);
                         post.parent   = root;
                     });
                     [0.75, 1.75].forEach((y, i) => {
                         const rail = BABYLON.MeshBuilder.CreateBox('rail'+i+'_'+obs.id,
                             { width: 10.5, height: 0.22, depth: 0.22 }, scene);
                         rail.position = new BABYLON.Vector3(0, y, 0);
-                        rail.material = mat(scene, new BABYLON.Color3(0.80, 0.52, 0.20));
+                        rail.material = cachedMat(0.80, 0.52, 0.20);
                         rail.parent   = root;
                     });
                 }
 
                 root.lookAt(new BABYLON.Vector3(nxt.x, 0, nxt.z));
-                root.getChildMeshes().forEach(m => { m.receiveShadows = true; if (_shadowGen) _shadowGen.addShadowCaster(m); });
+                root.getChildMeshes().forEach(m => { m });
                 obstacleMeshes[obs.id] = root;
                 continue;
             }
