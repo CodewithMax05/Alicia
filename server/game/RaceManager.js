@@ -190,6 +190,8 @@ class RaceManager {
             turboTimer:      0,
             blitzStunTimer:  0,
             _blockCooldown:  0,
+            _hitObsId:       null,   // ID des zuletzt treffenden Hindernisses
+            _hitObsCooldown: 0,      // Cooldown für dasselbe Hindernis
             exhausted:       false,
             exhaustedTimer:  0,
             lapStartTime:    0,
@@ -451,6 +453,7 @@ class RaceManager {
             if (h.turboTimer      > 0) h.turboTimer      -= deltaTime;
             if (h.blitzStunTimer  > 0) h.blitzStunTimer  -= deltaTime;
             if (h._blockCooldown  > 0) h._blockCooldown  -= deltaTime;
+            if (h._hitObsCooldown > 0) h._hitObsCooldown -= deltaTime;
 
             // Erschöpfungs-Erholung (max. 3s, dann automatisch beendet)
             if (h.exhausted) {
@@ -592,20 +595,71 @@ class RaceManager {
 
             // Kollision mit Hindernissen
             if (h._blockCooldown <= 0) {
+                // Hilfsfunktion: 2D-Weltposition aus Progress + Lane-Offset
+                const worldPos = (prog, off) => this.splineLUT
+                    ? _splinePos2D(this.splineLUT, prog, off)
+                    : _trackPos2D_static(prog, off, this.TRACK_A, this.TRACK_B);
+
+                // Pferdeposition
+                const hPos = worldPos(h.progress, LANE_OFFSETS[h.lane]);
+
                 for (const obs of this.obstacles) {
-                    if (Math.abs(h.progress - obs.progress) > 7) continue;
-                    const laneHit = obs.lane === -1 || obs.lane === h.lane;
-                    if (!laneHit) continue;
+                    // Grober Vorab-Check (Performance)
+                    if (Math.abs(h.progress - obs.progress) > 20) continue;
+
+                    // Dasselbe Hindernis darf nicht doppelt treffen
+                    if (h._hitObsId === obs.id && h._hitObsCooldown > 0) continue;
+
+                    let hit = false;
+
+                    if (obs.type === 'fence') {
+                        // Zaun = Linie quer zur Strecke → nur Längsabstand messen
+                        // (Tangente der Strecke an der Zaunposition berechnen)
+                        const fc  = worldPos(obs.progress, 0);
+                        const fc2 = worldPos(obs.progress + 2, 0);
+                        const tX  = fc2.x - fc.x, tZ = fc2.z - fc.z;
+                        const tLen = Math.sqrt(tX * tX + tZ * tZ) || 1;
+                        const vX  = hPos.x - fc.x, vZ = hPos.z - fc.z;
+                        // Projektion auf Tangente = Längsabstand
+                        const longitudinal = Math.abs((vX * tX + vZ * tZ) / tLen);
+                        hit = longitudinal < 2.5;
+                    } else {
+                        // Haybale / Haycart: euklidische 2D-Distanz + Längscheck
+                        const obsOff = obs.laneFloat !== undefined
+                            ? -3.5 + obs.laneFloat * 3.5
+                            : LANE_OFFSETS[obs.lane];
+                        const oPos = worldPos(obs.progress, obsOff);
+                        const dx = hPos.x - oPos.x, dz = hPos.z - oPos.z;
+                        const hitR = obs.type === 'haycart' ? 2.5 : 2.2;
+                        if (dx * dx + dz * dz < hitR * hitR) {
+                            // Längscheck: Pferd darf max. 1.5 WU vorbeigefahren sein.
+                            // Verhindert Spät-Treffer in Kurven, wo die euklidische Distanz
+                            // noch klein ist, obwohl das Pferd das Hindernis schon passiert hat.
+                            const tc  = worldPos(obs.progress,     0);
+                            const tc2 = worldPos(obs.progress + 2, 0);
+                            const tX  = tc2.x - tc.x, tZ = tc2.z - tc.z;
+                            const tLen = Math.sqrt(tX * tX + tZ * tZ) || 1;
+                            // positiv = Pferd ist vor dem Hindernis (in Fahrtrichtung)
+                            const longitudinal = (dx * tX + dz * tZ) / tLen;
+                            hit = longitudinal < 1.5;
+                        }
+                    }
+
+                    if (!hit) continue;
 
                     // ── Sprung (>= 1.0) schützt vor allen Hindernissen ──
                     if (h.jumpHeight >= 1.0) continue;
 
                     if (h.penaltyTimer > 0) continue;   // schon bestraft
 
+                    // Dasselbe Hindernis für 4s sperren (verhindert Doppel-Treffer)
+                    h._hitObsId       = obs.id;
+                    h._hitObsCooldown = 4.0;
+
                     if (h.shieldActive) {
                         h.shieldActive   = false;
                         h._blockCooldown = 1.5;
-                        h.shieldHits++;           // Schild hat absorbiert → Sound-Event
+                        h.shieldHits++;
                     } else {
                         h.speed         *= 0.35;
                         h.penaltyTimer   = 1.5;
