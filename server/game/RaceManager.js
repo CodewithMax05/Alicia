@@ -343,13 +343,13 @@ class RaceManager {
         const blocked  = [];
 
         // Mindestabstände je nach Map anpassen (Arctic hat mehr Items → enger)
-        const margin     = isArctic ? 55 : 80;
-        const distSingle = isArctic ? 28 : 45;
-        const distFence  = isArctic ? 35 : 55;
-        const distCart   = isArctic ? 35 : 65;
+        const margin     = isArctic ? 55 : 70;
+        const distSingle = isArctic ? 28 : 38;
+        const distFence  = isArctic ? 35 : 48;
+        const distCart   = isArctic ? 35 : 52;
 
         // ── Einzelspur-Hindernisse (Heuballen / Eisblöcke) ─────────────────────
-        const singleCount = isArctic ? 14 : 5;
+        const singleCount = isArctic ? 14 : 9;
         for (let i = 0; i < singleCount; i++) {
             const pos = this._findPos(blocked, margin);
             blocked.push({ pos, minDist: distSingle });
@@ -357,7 +357,7 @@ class RaceManager {
         }
 
         // ── Vollspur-Hindernisse (Zaun / Eiswand, Sprung zwingend) ─────────────
-        const fenceCount = isArctic ? 5 : 2;
+        const fenceCount = isArctic ? 5 : 3;
         for (let i = 0; i < fenceCount; i++) {
             const pos = this._findPos(blocked, margin);
             blocked.push({ pos, minDist: distFence });
@@ -365,7 +365,7 @@ class RaceManager {
         }
 
         // ── Bewegliche Hindernisse (Heuwagen / Eisschollen) ────────────────────
-        const cartCount = isArctic ? 6 : 3;
+        const cartCount = isArctic ? 6 : 5;
         for (let i = 0; i < cartCount; i++) {
             const pos = this._findPos(blocked, margin);
             blocked.push({ pos, minDist: distCart });
@@ -383,13 +383,13 @@ class RaceManager {
 
     _generatePowerups() {
         const isArctic = this.mapId === 'arctic';
-        // Arctic: 14 Power-Ups, Meadow: 8
-        const count    = isArctic ? 14 : 8;
+        // Arctic: 14 Power-Ups, Meadow: 12
+        const count    = isArctic ? 14 : 12;
         const base     = ['stamina', 'turbo', 'shield', 'blitz'];
         const types    = Array.from({ length: count }, (_, i) => base[i % base.length]);
         const obsConst = this.obstacles.map(o => ({ pos: o.progress, minDist: 35 }));
         const puConst  = [];
-        const puMinDist = isArctic ? 42 : 70;
+        const puMinDist = isArctic ? 42 : 55;
 
         return types.map((type, i) => {
             const pos = this._findPos([...obsConst, ...puConst], 50);
@@ -428,6 +428,7 @@ class RaceManager {
         if (this.state !== 'racing') return;
 
         this._raceTime += deltaTime;
+        const _pendingBlitz = [];  // Blitz-Effekte erst nach dem kompletten Pferde-Loop anwenden
 
         // ── Power-Up Respawn-Queue ────────────────────────────────────────────
         for (let i = this._puRespawnQueue.length - 1; i >= 0; i--) {
@@ -582,14 +583,9 @@ class RaceManager {
                 if (pu.type === 'turbo')   { h.turboTimer = 3.0; h.exhausted = false; }
                 if (pu.type === 'shield')  { h.shieldActive = true; }
                 if (pu.type === 'blitz') {
-                    // Alle anderen Pferde betäuben (Schild schützt davor)
-                    for (const [oid, other] of this.horses) {
-                        if (oid === id || other.finished) continue;
-                        if (other.shieldActive) { other.shieldActive = false; continue; }
-                        other.speed          *= 0.30;
-                        other.blitzStunTimer  = 2.5;
-                        other._blockCooldown  = 2.5;
-                    }
+                    // Blitz erst nach dem gesamten Pferde-Loop anwenden,
+                    // damit Schilde die in diesem Tick aufgesammelt wurden schon aktiv sind
+                    _pendingBlitz.push(id);
                 }
             }
 
@@ -669,6 +665,17 @@ class RaceManager {
                 }
             }
 
+        }
+
+        // ── Blitz-Effekte (nach Loop, damit alle Schilde dieses Ticks schon aktiv sind) ──
+        for (const blitzId of _pendingBlitz) {
+            for (const [oid, other] of this.horses) {
+                if (oid === blitzId || other.finished) continue;
+                if (other.shieldActive) { other.shieldActive = false; continue; }
+                other.speed          *= 0.30;
+                other.blitzStunTimer  = 2.5;
+                other._blockCooldown  = 2.5;
+            }
         }
     }
 

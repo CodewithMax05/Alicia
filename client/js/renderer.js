@@ -1877,8 +1877,8 @@ const Renderer = (() => {
 
                 if (id === _playerId) {
                     if (cameraMode === 'overview') {
-                        // Je näher rangezoomt, desto schneller folgt die Kamera
-                        camera.target = posY.clone();
+                        // Y fixiert auf Bodennähe – kein Ruckeln beim Sprung
+                        camera.target = new BABYLON.Vector3(posY.x, 0.15, posY.z);
                     } else {
                         // Vorwärtsrichtung des Pferdes in World-Space
                         const fwd = BABYLON.Vector3.TransformNormal(
