@@ -53,6 +53,19 @@ const Audio = (() => {
             masterGain = ctx.createGain();
             masterGain.gain.value = 0.6;
             masterGain.connect(ctx.destination);
+            // Warm-up: spinnt den Audio-Render-Thread an → kein Glitch/Dropout beim
+            // allerersten echten Sound (z.B. dem ersten Countdown-Beep).
+            try {
+                const wo = ctx.createOscillator(), wg = ctx.createGain();
+                wg.gain.value = 0.0001;
+                wo.connect(wg); wg.connect(masterGain);
+                wo.start(); wo.stop(ctx.currentTime + 0.06);
+            } catch { /* egal */ }
+            // Bei Tab-Rückkehr Kontext wieder aufwecken (Browser suspendiert ihn sonst,
+            // currentTime friert ein → Sounds würden sich beim Aufwachen stapeln).
+            document.addEventListener('visibilitychange', () => {
+                if (ctx && ctx.state === 'suspended' && !document.hidden) ctx.resume();
+            });
             _loadSounds();   // Sound-Dateien im Hintergrund laden
             // Nachgeholt: War Musik/Hufschlag bereits angefordert?
             if (_wantBg)   _startBgLoop();
@@ -150,9 +163,13 @@ const Audio = (() => {
     }
 
     function playCountdownBeep(num) {
-        const t = getCtx().currentTime;
+        const c = getCtx();
         const freq = num === 1 ? 660 : 440;
-        osc(freq, 'sine', t, 0.18, 0.45);
+        // Erst sicherstellen, dass der Kontext läuft, DANN auf der frischen currentTime
+        // planen. Verhindert das Stapeln mehrerer Beeps auf eingefrorener Zeit.
+        const fire = () => osc(freq, 'sine', c.currentTime + 0.03, 0.18, 0.45);
+        if (c.state === 'suspended') c.resume().then(fire).catch(fire);
+        else fire();
     }
 
     function playGo() {

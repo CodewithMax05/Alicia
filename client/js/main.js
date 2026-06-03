@@ -762,6 +762,9 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         // Für Rejoin nach Seitenneuladen speichern
         sessionStorage.setItem('alicia_horseId', msg.id);
         sessionStorage.setItem('alicia_lobbyId', msg.lobbyId);
+        // Panel SOFORT einblenden, BEVOR der Browser ausgeblendet wird → keine Lücke,
+        // in der der Canvas (die Map) durchblitzt, bis der erste Lobby-State eintrifft.
+        show('lobbyPanel');
         hide('lobbyBrowser');
         const h2 = document.querySelector('#ui h2');
         if (h2 && _lobbyName) h2.textContent = '🏇 ' + _lobbyName;
