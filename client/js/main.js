@@ -575,7 +575,7 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
             document.getElementById('status').textContent = 'Rennen läuft!';
             Audio.playGo();
             Audio.playCrowdCheer();
-            Audio.startBgMusic();
+            Audio.startBgMusic(state.mapId);
             Audio.startHoofLoop();
             Renderer.triggerSpectatorWave(0, 1);
             Renderer.triggerSpectatorWave(0, -1);
@@ -584,7 +584,7 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         if (rs === 'racing' && prevRaceState !== 'racing' && prevRaceState !== 'countdown') {
             hide('countdown'); show('lapDisplay'); show('ranking');
             document.getElementById('status').textContent = 'Rennen läuft!';
-            Audio.startBgMusic();
+            Audio.startBgMusic(state.mapId);
             Audio.startHoofLoop();
         }
 

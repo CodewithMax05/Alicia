@@ -276,6 +276,8 @@ const Audio = (() => {
 
     const _BG_LOOKAHEAD = 0.12;               // Sekunden vorausplanen
     const _BG_STEP_DUR  = (60 / 72) / 2;     // Achtelnote bei 72 BPM ≈ 0.417 s (ruhig)
+    const _BG_STEP_JUNGLE = 0.196;            // Dschungel: wuchtiger Beat (~16tel @ ~96 BPM)
+    let   _bgStyle        = 'meadow';         // 'meadow' | 'arctic' | 'jungle'
 
     // 16-Schritt-Sequenz (Achtelnoten). 0 = Pause
     // Sparsame Melodie — viele Pausen, wenige Noten (Fahrstuhl-Stil)
@@ -307,6 +309,99 @@ const Audio = (() => {
         // kein Schlagzeug, keine Hi-Hats
     }
 
+    // ── Dschungel-Musik: tief & ominös (Jumanji-Stil) ────────────────────────
+    //    Wuchtige Taiko-Trommeln + tiefe, bedrohliche Hörner (Am → F) + Sub-Bass
+    function _kick(t, vol) {                         // tiefe, wuchtige Bassdrum
+        const c = getCtx();
+        const o = c.createOscillator(), g = c.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(150, t);
+        o.frequency.exponentialRampToValueAtTime(38, t + 0.14);
+        g.gain.setValueAtTime(vol, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+        o.connect(g); g.connect(masterGain);
+        o.start(t); o.stop(t + 0.26);
+    }
+    function _tom(t, base, vol) {                    // Taiko-/Tom-Anschlag (gestimmt + Fell)
+        const c = getCtx();
+        const o = c.createOscillator(), g = c.createGain();
+        o.type = 'triangle';
+        o.frequency.setValueAtTime(base * 1.7, t);
+        o.frequency.exponentialRampToValueAtTime(base, t + 0.10);
+        g.gain.setValueAtTime(vol, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.20);
+        o.connect(g); g.connect(masterGain);
+        o.start(t); o.stop(t + 0.22);
+        noiseShot(t, 0.035, 1400, vol * 0.16);       // Fell-Anschlag
+    }
+    function _flute(t, freq, dur, vol) {             // sanfte, breathige Flöte (mittlere Lage)
+        const c = getCtx();
+        const o = c.createOscillator(), g = c.createGain();
+        o.type = 'sine';
+        o.frequency.value = freq;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(vol, t + 0.06);          // weicher Atem-Einsatz
+        g.gain.setValueAtTime(vol, t + dur * 0.6);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(g); g.connect(masterGain);
+        o.start(t); o.stop(t + dur + 0.03);
+        bandNoise(t, dur * 0.7, freq * 1.5, freq * 3.0, vol * 0.16, 0.05);  // leiser Atem
+    }
+    // Tiefe, bedrohliche Blechbläser: zwei leicht verstimmte Sägezähne durch ein
+    // Tiefpassfilter + Sub-Oktave → warm, dunkel, episch.
+    function _horn(t, freq, dur, vol) {
+        const c = getCtx();
+        [freq, freq * 1.006].forEach((f, i) => {
+            const o = c.createOscillator(), g = c.createGain(), lp = c.createBiquadFilter();
+            o.type = 'sawtooth'; o.frequency.value = f;
+            lp.type = 'lowpass'; lp.frequency.value = Math.min(1900, f * 4.5 + 220); lp.Q.value = 0.7;
+            const v = vol * (i ? 0.7 : 1);
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.linearRampToValueAtTime(v, t + 0.06);          // weiches, anschwellendes Attack
+            g.gain.setValueAtTime(v, t + dur * 0.55);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+            o.connect(lp); lp.connect(g); g.connect(masterGain);
+            o.start(t); o.stop(t + dur + 0.03);
+        });
+        osc(freq / 2, 'sine', t, dur, vol * 0.55);                // Sub-Oktave für Tiefe
+    }
+    function _hornChord(t, freqs, dur, vol) {
+        freqs.forEach((f, i) => _horn(t + i * 0.014, f, dur, vol));
+    }
+
+    // 16-Schritt-Pattern (1 = Anschlag). Wuchtig-treibender, ominöser Groove.
+    const J_KICK  = [1, 0, 0, 0,  0, 0, 1, 0,  1, 0, 0, 1,  0, 0, 1, 0];
+    const J_TOMLO = [0, 0, 1, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 1, 0, 0];   // tiefe Taiko-Pulsation
+    const J_TOMHI = [0, 0, 0, 1,  0, 0, 0, 1,  0, 0, 0, 1,  0, 0, 1, 1];
+    const J_SHAKE = [0, 1, 0, 1,  0, 1, 0, 1,  0, 1, 0, 1,  0, 1, 0, 1];
+    // Sub-Bass-Puls (A1 … F1) – tief und brodelnd
+    const J_BASS  = [55, 0, 0, 0,  0, 0, 55, 0,  44, 0, 0, 0,  0, 0, 44, 0];
+    // Sanfte Flötenphrase über 2 Takte (32 Schritte) – mittlere Lage, nicht schrill
+    const J_FLUTE = [
+        0, 0, 0, 0,  0, 0, 0, 0,   0, 0, 0, 0,  0, 0, 0, 0,        // Takt 1: Pause
+        0, 0, 0, 0,  0, 0, 0, 0,   330, 0, 0, 392,  0, 0, 440, 0,  // Takt 2: sanfter Anstieg E4–G4–A4
+    ];
+
+    function _jungleStep(t, step) {
+        const s = step % 16;
+        // Trommeln
+        if (J_KICK[s])  _kick(t, 0.32);
+        if (J_TOMLO[s]) _tom(t, 92,  0.18);          // tiefe Taiko
+        if (J_TOMHI[s]) _tom(t, 205, 0.11);
+        if (J_SHAKE[s]) bandNoise(t, 0.03, 7000, 13000, s % 4 === 1 ? 0.05 : 0.03, 0.003);
+        // Tiefe, ominöse Hörner: Am (Takthälfte 1) → F-Dur (Takthälfte 2). Mittlere
+        // Sustain-Zeit → präsent, aber wenig Überlappung.
+        if (s === 0 || s === 4)  _hornChord(t, [110, 131, 165], 0.58, 0.026);  // Am
+        if (s === 8 || s === 12) _hornChord(t, [ 87, 110, 131], 0.58, 0.026);  // F-Dur (bVI)
+        // Sub-Bass-Puls
+        if (J_BASS[s] > 0) osc(J_BASS[s], 'sine', t, 0.42, 0.09);
+        // sanfte Flötenphrase – nur alle 2 Takte, mittlere Lage (nicht schrill)
+        const s2 = step % 32;
+        if (J_FLUTE[s2] > 0) _flute(t, J_FLUTE[s2], 0.5, 0.038);
+        // tiefer, ominöser Bar-Wumms
+        if (s === 0) osc(41, 'sine', t, 0.7, 0.08);
+    }
+
     function _startBgLoop() {
         if (bgHandle) return;
         _bgStep     = 0;
@@ -316,18 +411,24 @@ const Audio = (() => {
         // Der eigentliche Audio-Aufwand läuft im Audio-Thread, nicht hier.
         bgHandle = setInterval(() => {
             if (!ctx) return;
-            const limit = ctx.currentTime + _BG_LOOKAHEAD;
+            const jungle  = _bgStyle === 'jungle';
+            const stepDur = jungle ? _BG_STEP_JUNGLE : _BG_STEP_DUR;
+            const limit   = ctx.currentTime + _BG_LOOKAHEAD;
             while (_bgNextTime < limit) {
-                try { _scheduleBgStep(_bgNextTime, _bgStep); } catch(e) { console.warn('[Audio] BG:', e); }
-                _bgNextTime += _BG_STEP_DUR;   // immer vorrücken, auch bei Fehler
+                try {
+                    if (jungle) _jungleStep(_bgNextTime, _bgStep);
+                    else        _scheduleBgStep(_bgNextTime, _bgStep);
+                } catch(e) { console.warn('[Audio] BG:', e); }
+                _bgNextTime += stepDur;   // immer vorrücken, auch bei Fehler
                 _bgStep++;
             }
         }, 75);
     }
 
-    function startBgMusic() {
+    function startBgMusic(style) {
+        if (style) _bgStyle = style;   // 'meadow' | 'arctic' | 'jungle'
         _wantBg = true;
-        if (ctx) _startBgLoop();   // AudioContext schon bereit → sofort starten
+        if (ctx) _startBgLoop();       // AudioContext schon bereit → sofort starten
     }
 
     function stopBgMusic() {

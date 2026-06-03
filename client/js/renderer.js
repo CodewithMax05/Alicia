@@ -2709,7 +2709,8 @@ const Renderer = (() => {
                 const side    = obs.side || -1;
                 const edgeOff = side * (TW / 2 + 1.6);
                 const pos     = trackPosition(obs.progress, edgeOff);
-                const center  = trackPosition(obs.progress, 0);   // Streckenmitte = Blickrichtung
+                // Blickrichtung schräg nach vorn (~20°): Punkt wo der Pfeil die Mitte kreuzt
+                const center  = trackPosition(obs.progress + 5.6, 0);
                 const root    = new BABYLON.TransformNode('obs' + obs.id, scene);
                 root.position = new BABYLON.Vector3(pos.x, 0, pos.z);
 
@@ -3126,14 +3127,6 @@ const Renderer = (() => {
         return root;
     }
 
-    // Progress-Interpolation mit Wrap (kürzester Weg um die Strecke)
-    function _lerpProg(a, b, t) {
-        let d = b - a;
-        if (d >  TRACK_LENGTH / 2) d -= TRACK_LENGTH;
-        if (d < -TRACK_LENGTH / 2) d += TRACK_LENGTH;
-        return ((a + d * t) % TRACK_LENGTH + TRACK_LENGTH) % TRACK_LENGTH;
-    }
-
     function updateProjectiles(list) {
         const active = new Set((list || []).map(p => p.id));
         // Verschwundene Pfeile entfernen
@@ -3146,21 +3139,15 @@ const Renderer = (() => {
         if (!list || list.length === 0) return;
 
         for (const p of list) {
-            const t = Math.max(0, Math.min(1, p.t));
-            // Pfeilbahn: vom Mündungsaustritt am Kobold zum Vorhaltepunkt vor dem Pferd
-            const curProg = _lerpProg(p.srcProgress, p.tgtProgress, t);
-            const curOff  = p.startOff + (p.tgtOff - p.startOff) * t;
-            const pos     = trackPosition(curProg, curOff);
-            const y       = 1.18 - Math.sin(t * Math.PI) * 0.06;   // fast flach, minimaler Bogen
+            // Geradlinige Bahn: aktuelle (progress, offset) direkt vom Server
+            const pos = trackPosition(p.progress, p.offset);
+            const y   = 1.18;   // konstante Flughöhe (flacher, gerader Flug)
 
             let dart = projectileMeshes[p.id];
             if (!dart) { dart = _buildDart(p.id); projectileMeshes[p.id] = dart; }
             dart.position.set(pos.x, y, pos.z);
-            // Ausrichtung entlang der Flugbahn (leicht voraus)
-            const t2        = Math.min(1, t + 0.05);
-            const aheadProg = _lerpProg(p.srcProgress, p.tgtProgress, t2);
-            const aheadOff  = p.startOff + (p.tgtOff - p.startOff) * t2;
-            const ahead     = trackPosition(aheadProg, aheadOff);
+            // Ausrichtung entlang der Geschwindigkeit (Vorwärts-Drift + seitlich)
+            const ahead = trackPosition(p.progress + p.vProg * 0.07, p.offset + p.vOff * 0.07);
             dart.lookAt(new BABYLON.Vector3(ahead.x, y, ahead.z));
         }
     }

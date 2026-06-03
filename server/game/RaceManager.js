@@ -6,10 +6,12 @@ const LANE_OFFSETS = [-3.5, 0, 3.5];
 
 // Blasrohr-Pfeil: geradliniger Diagonalflug quer über alle Spuren
 const BLOWGUN_MUZZLE_OFF = 5.6;   // seitlicher Versatz des Mündungsaustritts (am Kobold)
-const BLOWGUN_LAT_V      = 18;    // seitliche Fluggeschwindigkeit (Welt-Einheiten/s)
-const BLOWGUN_FWD_V      = 18;    // Vorwärts-Drift (Progress/s) → schräger ~20°-Flug
+const BLOWGUN_RATIO      = 1.0;   // Vorwärts/Seitlich-Verhältnis → fester ~20°-Schrägflug
 const BLOWGUN_FAR        = 8.5;   // Despawn-Kante jenseits der Außenspur
-const BLOWGUN_MIN_LEAD   = 4.5;   // Mindest-Abschussdistanz (faire Reaktionszeit)
+const BLOWGUN_SPEED_MIN  = 5;     // min. Pfeil-Seitengeschwindigkeit
+const BLOWGUN_SPEED_MAX  = 30;    // max. Pfeil-Seitengeschwindigkeit
+const BLOWGUN_FIRE_DIST  = 9;     // feuert, sobald das Pferd diese Distanz voraus erreicht
+const BLOWGUN_COOLDOWN   = 1.6;   // Nachladezeit pro Kobold
 
 // ── Frozen Circuit – Kontrollpunkte [x, z] für Catmull-Rom-Spline ─────────────
 // 14 Punkte → 6 echte Kurven: 2 Haarnadeln, lange Gerade, S-Kurven-Sektor
@@ -674,24 +676,29 @@ class RaceManager {
                         const longitudinal = Math.abs((vX * tX + vZ * tZ) / tLen);
                         hit = longitudinal < 2.5;
                     } else {
-                        // Haybale / Haycart: euklidische 2D-Distanz + Längscheck
+                        // Hindernis-Position + Strecken-Tangente (Längs-/Querzerlegung)
                         const obsOff = obs.laneFloat !== undefined
                             ? -3.5 + obs.laneFloat * 3.5
                             : LANE_OFFSETS[obs.lane];
                         const oPos = worldPos(obs.progress, obsOff);
                         const dx = hPos.x - oPos.x, dz = hPos.z - oPos.z;
-                        const hitR = obs.type === 'haycart' ? 2.5 : 2.2;
-                        if (dx * dx + dz * dz < hitR * hitR) {
-                            // Längscheck: Pferd darf max. 1.5 WU vorbeigefahren sein.
-                            // Verhindert Spät-Treffer in Kurven, wo die euklidische Distanz
-                            // noch klein ist, obwohl das Pferd das Hindernis schon passiert hat.
-                            const tc  = worldPos(obs.progress,     0);
-                            const tc2 = worldPos(obs.progress + 2, 0);
-                            const tX  = tc2.x - tc.x, tZ = tc2.z - tc.z;
-                            const tLen = Math.sqrt(tX * tX + tZ * tZ) || 1;
-                            // positiv = Pferd ist vor dem Hindernis (in Fahrtrichtung)
-                            const longitudinal = (dx * tX + dz * tZ) / tLen;
-                            hit = longitudinal < 1.5;
+                        const tc  = worldPos(obs.progress,     0);
+                        const tc2 = worldPos(obs.progress + 2, 0);
+                        const tX  = tc2.x - tc.x, tZ = tc2.z - tc.z;
+                        const tLen = Math.sqrt(tX * tX + tZ * tZ) || 1;
+                        const longitudinal = (dx * tX + dz * tZ) / tLen;   // + = vor dem Hindernis
+
+                        if (obs.type === 'haycart' && this.mapId === 'jungle') {
+                            // 🌿 Riesenblatt: langgestreckte Hitbox entlang der Strecke –
+                            //    deckt das ganze Blatt ab (Stiel hinten bis Blattspitze vorn).
+                            const lateral = (dx * -tZ + dz * tX) / tLen;   // Querabstand
+                            hit = Math.abs(lateral) < 1.4 && longitudinal > -2.5 && longitudinal < 5.0;
+                        } else {
+                            // Heuwagen / Eisscholle / Statue: kompakte Kreis-Hitbox + Längscheck.
+                            // Längscheck verhindert Spät-Treffer in Kurven (euklidische Distanz
+                            // bleibt klein, obwohl das Pferd schon vorbei ist).
+                            const hitR = obs.type === 'haycart' ? 2.5 : 2.2;
+                            hit = (dx * dx + dz * dz < hitR * hitR) && longitudinal < 1.5;
                         }
                     }
 
@@ -742,12 +749,12 @@ class RaceManager {
     // ausweicht. Treffer per echter 2D-Distanz → trifft das Pferd, wo es gerade ist.
     // Abschuss getimt, damit der Pfeil die aktuelle Spur beim Vorbeikommen kreuzt.
     _updateBlowguns(dt) {
-        const HIT_R = 1.25;   // 2D-Trefferradius (schmaler als eine Spur)
-        const worldPos = (prog, off) => this.splineLUT
-            ? _splinePos2D(this.splineLUT, prog, off)
-            : _trackPos2D_static(prog, off, this.TRACK_A, this.TRACK_B);
+        // Getrennte Toleranzen: seitlich eng (< 1 Spur), längs großzügig (fängt
+        // Timing-Fehler durch Beschleunigung ab). Vergleich direkt in (progress, offset).
+        const LAT_TOL  = 1.7;
+        const LONG_TOL = 3.4;
 
-        // 1) Pfeile geradlinig bewegen & per 2D-Distanz auf Treffer prüfen
+        // 1) Pfeile geradlinig bewegen & auf Treffer prüfen
         for (let i = this.projectiles.length - 1; i >= 0; i--) {
             const p = this.projectiles[i];
             p.progress = ((p.progress + p.vProg * dt) % TRACK_LENGTH + TRACK_LENGTH) % TRACK_LENGTH;
@@ -755,13 +762,13 @@ class RaceManager {
             p.age     += dt;
 
             if (!p.spent) {
-                const dPos = worldPos(p.progress, p.offset);
                 for (const [, h] of this.horses) {
                     if (h.finished || h.penaltyTimer > 0) continue;
                     if (h.jumpHeight >= 1.0) continue;          // drübergesprungen
-                    const hPos = worldPos(h.progress, LANE_OFFSETS[h.lane]);
-                    const dx = hPos.x - dPos.x, dz = hPos.z - dPos.z;
-                    if (dx * dx + dz * dz < HIT_R * HIT_R) {
+                    let dlong = Math.abs(h.progress - p.progress);
+                    if (dlong > TRACK_LENGTH / 2) dlong = TRACK_LENGTH - dlong;
+                    if (dlong > LONG_TOL) continue;
+                    if (Math.abs(LANE_OFFSETS[h.lane] - p.offset) < LAT_TOL) {
                         if (h.shieldActive) { h.shieldActive = false; h.shieldHits++; }
                         else { h.speed *= 0.5; h.penaltyTimer = 1.0; h._blockCooldown = 1.0; }
                         p.spent = true;
@@ -774,37 +781,45 @@ class RaceManager {
             if (p.spent || pastFar || p.age > 4.0) this.projectiles.splice(i, 1);
         }
 
-        // 2) Schützen feuern: getimt, sodass der gerade Pfeil die aktuelle Spur kreuzt
+        // 2) Schützen feuern: sobald ein Pferd in Reichweite voraus ist, IMMER feuern.
+        //    Pfeilgeschwindigkeit wird pro Schuss berechnet, damit der gerade Pfeil die
+        //    aktuelle Spur des Ziels kreuzt (unabhängig vom Tempo des Pferdes).
         for (const obs of this.obstacles) {
             if (obs.type !== 'blowgun') continue;
             obs.cooldown -= dt;
             if (obs.cooldown > 0) continue;
+
+            // Nächstes Pferd, das die Abschussdistanz voraus erreicht hat
+            let target = null, bestFwd = Infinity;
             for (const [, h] of this.horses) {
                 if (h.finished) continue;
                 const fwd = ((obs.progress - h.progress) % TRACK_LENGTH + TRACK_LENGTH) % TRACK_LENGTH;
-                if (fwd > 16) continue;                         // außer Reichweite
-                const spd      = Math.max(h.speed, 10);
-                const startOff = obs.side * BLOWGUN_MUZZLE_OFF;
-                const vOff     = -obs.side * BLOWGUN_LAT_V;     // zur Gegenseite
-                const O        = LANE_OFFSETS[h.lane];
-                const tO       = (O - startOff) / vOff;         // Zeit bis Pfeil die Spur kreuzt
-                if (tO <= 0.02) continue;
-                const fwdHit   = (spd - BLOWGUN_FWD_V) * tO;    // nötige Abschussdistanz
-                if (fwdHit < BLOWGUN_MIN_LEAD) continue;        // zu nah → kein fairer Schuss
-                if (Math.abs(fwd - fwdHit) <= 1.2) {
-                    this.projectiles.push({
-                        id:       `dart_${obs.id}_${this._dartSeq++}`,
-                        side:     obs.side,
-                        progress: obs.progress,
-                        offset:   startOff,
-                        vProg:    BLOWGUN_FWD_V,
-                        vOff,
-                        age: 0, spent: false,
-                    });
-                    obs.cooldown = 2.6;
-                    break;
-                }
+                if (fwd >= 2 && fwd <= BLOWGUN_FIRE_DIST && fwd < bestFwd) { bestFwd = fwd; target = h; }
             }
+            if (!target) continue;
+
+            const startOff = obs.side * BLOWGUN_MUZZLE_OFF;
+            const O   = LANE_OFFSETS[target.lane];
+            const A   = Math.abs(O - startOff);               // seitliche Strecke zur Zielspur
+            // Vorhalt aufs erwartete Tempo beim Einschlag: beschleunigende Pferde
+            // nähern sich ihrer Maximalgeschwindigkeit → leicht voraushalten
+            const spd = (target.accelerating && !target.exhausted)
+                ? Math.min(target.maxSpeed || 34, Math.max(target.speed, 8) + 6)
+                : Math.max(target.speed, 8);
+            // LAT_V so wählen, dass der Pfeil die Zielspur kreuzt, wenn das Pferd dort ist
+            let latV = spd * A / (bestFwd + BLOWGUN_RATIO * A);
+            latV = Math.max(BLOWGUN_SPEED_MIN, Math.min(BLOWGUN_SPEED_MAX, latV));
+
+            this.projectiles.push({
+                id:       `dart_${obs.id}_${this._dartSeq++}`,
+                side:     obs.side,
+                progress: obs.progress,
+                offset:   startOff,
+                vProg:    latV * BLOWGUN_RATIO,               // Vorwärts-Drift (~20°)
+                vOff:     -obs.side * latV,                   // zur Gegenseite
+                age: 0, spent: false,
+            });
+            obs.cooldown = BLOWGUN_COOLDOWN;
         }
     }
 
@@ -842,9 +857,8 @@ class RaceManager {
             powerups: this.powerups.filter(p => !p.collected),
             projectiles: this.projectiles.map(p => ({
                 id: p.id, side: p.side,
-                srcProgress: p.srcProgress, startOff: p.startOff,
-                tgtProgress: p.tgtProgress, tgtOff: p.tgtOff,
-                t: Math.min(1.05, p.t),
+                progress: p.progress, offset: p.offset,
+                vProg: p.vProg, vOff: p.vOff,
             })),
             weatherPreset: this.weatherPreset,
             readyPlayers: [...this.readyPlayers],
