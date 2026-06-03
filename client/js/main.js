@@ -257,17 +257,19 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
         const myVote   = votes[pid] || null;
         const meadowCt = Object.values(votes).filter(v => v === 'meadow').length;
         const arcticCt = Object.values(votes).filter(v => v === 'arctic').length;
+        const jungleCt = Object.values(votes).filter(v => v === 'jungle').length;
         const total    = Object.keys(state.horses || {}).length;
         const curMap   = state.mapId || 'meadow';
 
         // Nur neu rendern wenn sich etwas geändert hat
-        const renderKey = `${myVote}|${meadowCt}|${arcticCt}|${total}|${curMap}`;
+        const renderKey = `${myVote}|${meadowCt}|${arcticCt}|${jungleCt}|${total}|${curMap}`;
         if (voteEl._renderKey === renderKey) return;
         voteEl._renderKey = renderKey;
 
         const mapDefs = [
-            { id: 'meadow', icon: '🌿', name: 'Wiese',  votes: meadowCt },
-            { id: 'arctic', icon: '🧊', name: 'Arktis', votes: arcticCt },
+            { id: 'meadow', icon: '🌿', name: 'Wiese',    votes: meadowCt },
+            { id: 'arctic', icon: '🧊', name: 'Arktis',   votes: arcticCt },
+            { id: 'jungle', icon: '🌴', name: 'Dschungel', votes: jungleCt },
         ];
 
         voteEl.innerHTML = mapDefs.map(m => {
@@ -402,6 +404,9 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
 
         // ── Hindernisse ──────────────────────────────────────────────────────
         if (state.obstacles) Renderer.updateObstacles(state.obstacles);
+
+        // ── Blasrohr-Pfeile (Dschungel) ──────────────────────────────────────
+        Renderer.updateProjectiles(state.projectiles || []);
 
         // ── Power-Ups ────────────────────────────────────────────────────────
         if (state.powerups) Renderer.updatePowerups(state.powerups);
@@ -692,12 +697,15 @@ function startGame(horseType, playerName = 'Fahrer', riderConfig = { face:0, shi
             Renderer.clearObstacles();
             Renderer.clearPowerups();
 
-            // Wetter anwenden – Arctic-Map überschreibt immer mit 'arctic'
-            const effectiveWeather = state.mapId === 'arctic' ? 'foggy' : state.weatherPreset;
+            // Wetter anwenden – Arctic & Jungle erzwingen ihr eigenes Ambiente
+            const effectiveWeather =
+                state.mapId === 'arctic' ? 'foggy'  :
+                state.mapId === 'jungle' ? 'jungle' :
+                state.weatherPreset;
             if (effectiveWeather && effectiveWeather !== _appliedWeather) {
                 _appliedWeather = effectiveWeather;
                 Renderer.setWeather(effectiveWeather);
-                if (state.mapId !== 'arctic') _showWeatherToast(effectiveWeather);
+                if (state.mapId !== 'arctic' && state.mapId !== 'jungle') _showWeatherToast(effectiveWeather);
             }
             prevJumpHeight = 0; prevPenalized = false; prevFinished = false;
             prevLapCount = 0; prevTurboTimer = 0; prevShieldActive = false;

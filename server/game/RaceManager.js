@@ -4,6 +4,13 @@ const GRAVITY       = 30;
 // Spurversatz: [-3.5, 0, +3.5] für Innen/Mitte/Außen
 const LANE_OFFSETS = [-3.5, 0, 3.5];
 
+// Blasrohr-Pfeil: geradliniger Diagonalflug quer über alle Spuren
+const BLOWGUN_MUZZLE_OFF = 5.6;   // seitlicher Versatz des Mündungsaustritts (am Kobold)
+const BLOWGUN_LAT_V      = 18;    // seitliche Fluggeschwindigkeit (Welt-Einheiten/s)
+const BLOWGUN_FWD_V      = 18;    // Vorwärts-Drift (Progress/s) → schräger ~20°-Flug
+const BLOWGUN_FAR        = 8.5;   // Despawn-Kante jenseits der Außenspur
+const BLOWGUN_MIN_LEAD   = 4.5;   // Mindest-Abschussdistanz (faire Reaktionszeit)
+
 // ── Frozen Circuit – Kontrollpunkte [x, z] für Catmull-Rom-Spline ─────────────
 // 14 Punkte → 6 echte Kurven: 2 Haarnadeln, lange Gerade, S-Kurven-Sektor
 const ARCTIC_PTS = [
@@ -21,6 +28,25 @@ const ARCTIC_PTS = [
     [ 16,  28],  // 11  S-Kurve – erster Bogen
     [ 34,  36],  // 12  S-Kurve – zweiter Bogen
     [ 60,  20],  // 13  Schlusskurve zurück zum Start
+];
+
+// ── Dschungel-Pfad – Kontrollpunkte [x, z] für gewundene Urwald-Strecke ───────
+// 14 Punkte → fließende S-Kurven, eine Haarnadel links, langer Bogen rechts
+const JUNGLE_PTS = [
+    [ 70,   4],  //  0  Start/Ziel
+    [ 66,  26],  //  1  Einfahrt Rechtsbogen
+    [ 46,  42],  //  2  oberer Bogen
+    [ 16,  48],  //  3  obere Gerade rechts
+    [-14,  46],  //  4  obere Gerade Mitte
+    [-42,  42],  //  5  obere Gerade links
+    [-66,  22],  //  6  Linkskurve Einfahrt
+    [-72,  -6],  //  7  Haarnadel links (eng)
+    [-56, -30],  //  8  Ausfahrt Haarnadel
+    [-28, -40],  //  9  untere Gerade links
+    [  2, -42],  // 10  untere Gerade Mitte
+    [ 30, -38],  // 11  S-Kurve Anfang
+    [ 52, -26],  // 12  S-Kurve zurück
+    [ 64,  -8],  // 13  Schlusskurve zum Start
 ];
 
 // ── Catmull-Rom-Interpolation (ein Segment) ────────────────────────────────────
@@ -93,6 +119,16 @@ const MAP_CONFIGS = {
         LANE_SCALE:  [1.058, 1.000, 0.948],
         AVG_RAW_ARC: 1.0,  // bei Spline: arcNorm = 1.0 (LUT ist bogenparametriert)
         useSpline:   true,
+        points:      ARCTIC_PTS,
+    },
+    jungle: {
+        // Dschungel: Spline-basierte gewundene Urwald-Strecke
+        TRACK_A:     0,
+        TRACK_B:     0,
+        LANE_SCALE:  [1.058, 1.000, 0.948],
+        AVG_RAW_ARC: 1.0,
+        useSpline:   true,
+        points:      JUNGLE_PTS,
     },
 };
 
@@ -128,6 +164,8 @@ class RaceManager {
         this.finishOrder     = [];
         this.obstacles       = [];
         this.powerups        = [];
+        this.projectiles     = [];   // Blasrohr-Pfeile (Dschungel)
+        this._dartSeq        = 0;     // fortlaufende Pfeil-ID
         this._raceTime       = 0;
         this.onRaceEnd       = onRaceEnd;
         this.totalLaps       = Math.max(1, Math.min(10, totalLaps));
@@ -153,8 +191,8 @@ class RaceManager {
         this.TRACK_B     = cfg.TRACK_B;
         this.LANE_SCALE  = cfg.LANE_SCALE;
         this.AVG_RAW_ARC = cfg.AVG_RAW_ARC;
-        // Spline-LUT für nicht-elliptische Strecken
-        this.splineLUT   = cfg.useSpline ? _buildSplineLUT(ARCTIC_PTS, 512) : null;
+        // Spline-LUT für nicht-elliptische Strecken (Kontrollpunkte je Map)
+        this.splineLUT   = cfg.useSpline ? _buildSplineLUT(cfg.points, 512) : null;
     }
 
     // ── Pferde ────────────────────────────────────────────────────────────────
@@ -296,6 +334,7 @@ class RaceManager {
         this.finishOrder     = [];
         this.obstacles       = this._generateObstacles();
         this.powerups        = this._generatePowerups();
+        this.projectiles     = [];
         this._raceTime     = 0;
         this.weatherPreset = WEATHER_OPTIONS[Math.floor(Math.random() * WEATHER_OPTIONS.length)];
 
@@ -338,37 +377,39 @@ class RaceManager {
     }
 
     _generateObstacles() {
-        const isArctic = this.mapId === 'arctic';
-        const obs      = [];
-        const blocked  = [];
+        const obs     = [];
+        const blocked = [];
 
-        // Mindestabstände je nach Map anpassen (Arctic hat mehr Items → enger)
-        const margin     = isArctic ? 55 : 70;
-        const distSingle = isArctic ? 28 : 38;
-        const distFence  = isArctic ? 35 : 48;
-        const distCart   = isArctic ? 35 : 52;
+        // Pro-Map: Anzahl & Mindestabstände der Hindernis-Kategorien
+        //   single = Einzelspur (Heuballen / Eisblock / Tiki-Statue)
+        //   fence  = Vollspur (Zaun / Eiswand / Baumstamm, Sprung zwingend)
+        //   cart   = beweglich (Heuwagen / Eisscholle / Riesenblatt)
+        //   gun    = Blasrohrschützen (nur Dschungel)
+        const CFG = {
+            meadow: { single: 9,  fence: 3, cart: 5, gun: 0, margin: 70, dSingle: 38, dFence: 48, dCart: 52, dGun: 0  },
+            arctic: { single: 14, fence: 5, cart: 6, gun: 0, margin: 55, dSingle: 28, dFence: 35, dCart: 35, dGun: 0  },
+            jungle: { single: 8,  fence: 4, cart: 5, gun: 5, margin: 60, dSingle: 36, dFence: 46, dCart: 48, dGun: 44 },
+        };
+        const c = CFG[this.mapId] || CFG.meadow;
 
-        // ── Einzelspur-Hindernisse (Heuballen / Eisblöcke) ─────────────────────
-        const singleCount = isArctic ? 14 : 9;
-        for (let i = 0; i < singleCount; i++) {
-            const pos = this._findPos(blocked, margin);
-            blocked.push({ pos, minDist: distSingle });
+        // ── Einzelspur-Hindernisse (Heuballen / Eisblock / Tiki-Statue) ────────
+        for (let i = 0; i < c.single; i++) {
+            const pos = this._findPos(blocked, c.margin);
+            blocked.push({ pos, minDist: c.dSingle });
             obs.push({ id: i, progress: pos, lane: Math.floor(Math.random() * 3), type: 'haybale' });
         }
 
-        // ── Vollspur-Hindernisse (Zaun / Eiswand, Sprung zwingend) ─────────────
-        const fenceCount = isArctic ? 5 : 3;
-        for (let i = 0; i < fenceCount; i++) {
-            const pos = this._findPos(blocked, margin);
-            blocked.push({ pos, minDist: distFence });
+        // ── Vollspur-Hindernisse (Zaun / Eiswand / Baumstamm, Sprung zwingend) ─
+        for (let i = 0; i < c.fence; i++) {
+            const pos = this._findPos(blocked, c.margin);
+            blocked.push({ pos, minDist: c.dFence });
             obs.push({ id: 20 + i, progress: pos, lane: -1, type: 'fence' });
         }
 
-        // ── Bewegliche Hindernisse (Heuwagen / Eisschollen) ────────────────────
-        const cartCount = isArctic ? 6 : 5;
-        for (let i = 0; i < cartCount; i++) {
-            const pos = this._findPos(blocked, margin);
-            blocked.push({ pos, minDist: distCart });
+        // ── Bewegliche Hindernisse (Heuwagen / Eisscholle / Riesenblatt) ──────
+        for (let i = 0; i < c.cart; i++) {
+            const pos = this._findPos(blocked, c.margin);
+            blocked.push({ pos, minDist: c.dCart });
             obs.push({
                 id: 30 + i, progress: pos, lane: 1, laneFloat: 1.0,
                 lanePhase: i * 1.55 + Math.random() * 0.9,
@@ -377,8 +418,18 @@ class RaceManager {
             });
         }
 
+        // ── Blasrohrschützen (Dschungel) – feuern Pfeile auf herannahende Pferde ─
+        for (let i = 0; i < c.gun; i++) {
+            const pos = this._findPos(blocked, c.margin);
+            blocked.push({ pos, minDist: c.dGun });
+            obs.push({
+                id: 40 + i, progress: pos, lane: -1,
+                side: i % 2 === 0 ? -1 : 1,   // abwechselnd Innen-/Außenrand
+                type: 'blowgun', cooldown: 1.5 + Math.random() * 1.5,
+            });
+        }
+
         return obs;
-        // Arctic gesamt: 14 + 5 + 6 = 25 Hindernisse
     }
 
     _generatePowerups() {
@@ -600,6 +651,9 @@ class RaceManager {
                 const hPos = worldPos(h.progress, LANE_OFFSETS[h.lane]);
 
                 for (const obs of this.obstacles) {
+                    // Blasrohrschützen selbst sind nicht kollidierbar (nur ihre Pfeile)
+                    if (obs.type === 'blowgun') continue;
+
                     // Grober Vorab-Check (Performance)
                     if (Math.abs(h.progress - obs.progress) > 20) continue;
 
@@ -677,6 +731,81 @@ class RaceManager {
                 other._blockCooldown  = 2.5;
             }
         }
+
+        // ── Blasrohrschützen & Pfeile (Dschungel) ──────────────────────────────
+        this._updateBlowguns(deltaTime);
+    }
+
+    // ── Blasrohrschützen: geradliniger Diagonal-Pfeil quer über alle Spuren ────
+    // Der Pfeil fliegt mit konstanter Geschwindigkeit eine feste, schräge Bahn und
+    // despawnt erst an der Gegenseite (oder bei Treffer) – NICHT wenn das Pferd
+    // ausweicht. Treffer per echter 2D-Distanz → trifft das Pferd, wo es gerade ist.
+    // Abschuss getimt, damit der Pfeil die aktuelle Spur beim Vorbeikommen kreuzt.
+    _updateBlowguns(dt) {
+        const HIT_R = 1.25;   // 2D-Trefferradius (schmaler als eine Spur)
+        const worldPos = (prog, off) => this.splineLUT
+            ? _splinePos2D(this.splineLUT, prog, off)
+            : _trackPos2D_static(prog, off, this.TRACK_A, this.TRACK_B);
+
+        // 1) Pfeile geradlinig bewegen & per 2D-Distanz auf Treffer prüfen
+        for (let i = this.projectiles.length - 1; i >= 0; i--) {
+            const p = this.projectiles[i];
+            p.progress = ((p.progress + p.vProg * dt) % TRACK_LENGTH + TRACK_LENGTH) % TRACK_LENGTH;
+            p.offset  += p.vOff * dt;
+            p.age     += dt;
+
+            if (!p.spent) {
+                const dPos = worldPos(p.progress, p.offset);
+                for (const [, h] of this.horses) {
+                    if (h.finished || h.penaltyTimer > 0) continue;
+                    if (h.jumpHeight >= 1.0) continue;          // drübergesprungen
+                    const hPos = worldPos(h.progress, LANE_OFFSETS[h.lane]);
+                    const dx = hPos.x - dPos.x, dz = hPos.z - dPos.z;
+                    if (dx * dx + dz * dz < HIT_R * HIT_R) {
+                        if (h.shieldActive) { h.shieldActive = false; h.shieldHits++; }
+                        else { h.speed *= 0.5; h.penaltyTimer = 1.0; h._blockCooldown = 1.0; }
+                        p.spent = true;
+                        break;
+                    }
+                }
+            }
+            // Despawn: über die Gegenseite hinausgeflogen, getroffen oder zu alt
+            const pastFar = p.side < 0 ? (p.offset > BLOWGUN_FAR) : (p.offset < -BLOWGUN_FAR);
+            if (p.spent || pastFar || p.age > 4.0) this.projectiles.splice(i, 1);
+        }
+
+        // 2) Schützen feuern: getimt, sodass der gerade Pfeil die aktuelle Spur kreuzt
+        for (const obs of this.obstacles) {
+            if (obs.type !== 'blowgun') continue;
+            obs.cooldown -= dt;
+            if (obs.cooldown > 0) continue;
+            for (const [, h] of this.horses) {
+                if (h.finished) continue;
+                const fwd = ((obs.progress - h.progress) % TRACK_LENGTH + TRACK_LENGTH) % TRACK_LENGTH;
+                if (fwd > 16) continue;                         // außer Reichweite
+                const spd      = Math.max(h.speed, 10);
+                const startOff = obs.side * BLOWGUN_MUZZLE_OFF;
+                const vOff     = -obs.side * BLOWGUN_LAT_V;     // zur Gegenseite
+                const O        = LANE_OFFSETS[h.lane];
+                const tO       = (O - startOff) / vOff;         // Zeit bis Pfeil die Spur kreuzt
+                if (tO <= 0.02) continue;
+                const fwdHit   = (spd - BLOWGUN_FWD_V) * tO;    // nötige Abschussdistanz
+                if (fwdHit < BLOWGUN_MIN_LEAD) continue;        // zu nah → kein fairer Schuss
+                if (Math.abs(fwd - fwdHit) <= 1.2) {
+                    this.projectiles.push({
+                        id:       `dart_${obs.id}_${this._dartSeq++}`,
+                        side:     obs.side,
+                        progress: obs.progress,
+                        offset:   startOff,
+                        vProg:    BLOWGUN_FWD_V,
+                        vOff,
+                        age: 0, spent: false,
+                    });
+                    obs.cooldown = 2.6;
+                    break;
+                }
+            }
+        }
     }
 
     // ── State für Clients ─────────────────────────────────────────────────────
@@ -711,6 +840,12 @@ class RaceManager {
             finishOrder: this.finishOrder, ranking: ranked,
             totalLaps: this.totalLaps, obstacles: this.obstacles,
             powerups: this.powerups.filter(p => !p.collected),
+            projectiles: this.projectiles.map(p => ({
+                id: p.id, side: p.side,
+                srcProgress: p.srcProgress, startOff: p.startOff,
+                tgtProgress: p.tgtProgress, tgtOff: p.tgtOff,
+                t: Math.min(1.05, p.t),
+            })),
             weatherPreset: this.weatherPreset,
             readyPlayers: [...this.readyPlayers],
             mapId: this.mapId,

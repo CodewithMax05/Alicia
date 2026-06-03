@@ -21,6 +21,15 @@ const Minimap = (() => {
         [ 34,  36], [ 60,  20],
     ];
 
+    // ── Dschungel-Pfad – identische Kontrollpunkte wie renderer.js ──────────
+    const JUNGLE_PTS = [
+        [ 70,   4], [ 66,  26], [ 46,  42],
+        [ 16,  48], [-14,  46], [-42,  42],
+        [-66,  22], [-72,  -6], [-56, -30],
+        [-28, -40], [  2, -42], [ 30, -38],
+        [ 52, -26], [ 64,  -8],
+    ];
+
     function _crPt(p0,p1,p2,p3,t){
         const t2=t*t,t3=t2*t;
         return[0.5*(2*p1[0]+(-p0[0]+p2[0])*t+(2*p0[0]-5*p1[0]+4*p2[0]-p3[0])*t2+(-p0[0]+3*p1[0]-3*p2[0]+p3[0])*t3),
@@ -68,12 +77,16 @@ const Minimap = (() => {
         );
     }
 
-    /** Wird aufgerufen wenn die Map wechselt. mapId = 'meadow' | 'arctic' */
+    /** Wird aufgerufen wenn die Map wechselt. mapId = 'meadow' | 'arctic' | 'jungle' */
     function setTrackConfig(mapId) {
         if (mapId === 'arctic') {
             _trackA = 82; _trackB = 48;   // Bounding-Box des Splines (für SC-Berechnung)
             SC = _calcSC(_trackA, _trackB);
             _splineLUT = _buildLUT(ARCTIC_PTS, 256);
+        } else if (mapId === 'jungle') {
+            _trackA = 78; _trackB = 54;   // Bounding-Box des Dschungel-Splines
+            SC = _calcSC(_trackA, _trackB);
+            _splineLUT = _buildLUT(JUNGLE_PTS, 256);
         } else {
             _trackA = 55; _trackB = 28;
             SC = _calcSC(_trackA, _trackB);

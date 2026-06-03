@@ -18,6 +18,15 @@ const Renderer = (() => {
         [ 34,  36], [ 60,  20],
     ];
 
+    // ── Dschungel-Pfad – Kontrollpunkte (identisch mit RaceManager.js) ────────
+    const JUNGLE_PTS = [
+        [ 70,   4], [ 66,  26], [ 46,  42],
+        [ 16,  48], [-14,  46], [-42,  42],
+        [-66,  22], [-72,  -6], [-56, -30],
+        [-28, -40], [  2, -42], [ 30, -38],
+        [ 52, -26], [ 64,  -8],
+    ];
+
     function _crPt(p0, p1, p2, p3, t) {
         const t2=t*t, t3=t2*t;
         return [
@@ -69,6 +78,7 @@ const Renderer = (() => {
     const horses         = {};
     const obstacleMeshes = {};
     const powerupMeshes  = {};
+    const projectileMeshes = {};   // Blasrohr-Pfeile (Dschungel)
     let _playerId        = null;
     let _finishBanner    = null;
     let _shakeEnd        = 0;
@@ -137,6 +147,14 @@ const Renderer = (() => {
             fogDensity: 0.007, fogColor: [0.72, 0.82, 0.94], clearColor: [0.52, 0.70, 0.88],
             night: false, rain: false, snow: true,
         },
+        // Dschungel-Preset — warm, feucht, grünlicher Dunst
+        jungle: {
+            skyVisible: true, skyTurbidity: 11, skyLuminance: 0.78, skyInclination: 0.45,  skyAzimuth: 0.35,
+            sunIntensity: 0.95, sunColor:  [1.00, 0.98, 0.82],
+            ambIntensity: 0.78, ambColor:  [0.74, 0.90, 0.66],
+            fogDensity: 0.013, fogColor: [0.42, 0.58, 0.40], clearColor: [0.34, 0.52, 0.36],
+            night: false, rain: false,
+        },
     };
 
     // Canvas-basierte Weichzeichner-Textur für alle Partikel
@@ -196,6 +214,83 @@ const Renderer = (() => {
     }
     // Cache beim Map-Wechsel leeren (Materialien werden mit Meshes disposed)
     function _clearMatCache() { _matCache.clear(); }
+
+    // ── Blatt-Textur (Bananenblatt / Buschblatt) ───────────────────────────────
+    // Zeichnet ein realistisches, geädertes Blatt in eine DynamicTexture und gibt
+    // ein Alpha-Test-Material zurück. Einmal erstellt, sessionweit wiederverwendet.
+    let _leafMatBanana = null, _leafMatBush = null;
+    function _jungleLeafMaterial(kind) {
+        if (kind === 'banana' && _leafMatBanana) return _leafMatBanana;
+        if (kind === 'bush'   && _leafMatBush)   return _leafMatBush;
+
+        const long = kind === 'banana';
+        const W = long ? 200 : 240;
+        const H = long ? 560 : 300;
+        const dt  = new BABYLON.DynamicTexture('leaftex_' + kind, { width: W, height: H }, scene, true);
+        const ctx = dt.getContext();
+        ctx.clearRect(0, 0, W, H);
+
+        const cx = W / 2, tipY = 10, baseY = H - 14, span = baseY - tipY;
+        const maxHalf = long ? W * 0.40 : W * 0.46;
+        const shp = long ? 0.62 : 0.50;
+        // Halbe Blattbreite an Längsposition t (0 = Basis unten, 1 = Spitze oben)
+        const hw = (t) => maxHalf * Math.pow(Math.sin(Math.PI * Math.max(0, Math.min(1, t))), shp);
+
+        // Blattfläche mit vertikalem Grünverlauf (dunkel an Basis → hell an Spitze)
+        const grad = ctx.createLinearGradient(0, baseY, 0, tipY);
+        grad.addColorStop(0,   long ? '#2f7d2a' : '#347f29');
+        grad.addColorStop(0.5, long ? '#46a033' : '#4faa3a');
+        grad.addColorStop(1,   long ? '#5cb840' : '#66bb4c');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        const STEPS = 64;
+        for (let i = 0; i <= STEPS; i++) { const t = i / STEPS; ctx.lineTo(cx + hw(t), baseY - span * t); }
+        for (let i = STEPS; i >= 0; i--) { const t = i / STEPS; ctx.lineTo(cx - hw(t), baseY - span * t); }
+        ctx.closePath(); ctx.fill();
+
+        // Dichte, feine Seitenadern – diagonal von der Mittelrippe nach außen-oben
+        ctx.lineCap = 'round';
+        const step = long ? 7 : 9;
+        for (let yy = tipY + 8; yy < baseY - 2; yy += step) {
+            const t = (baseY - yy) / span;
+            const w = hw(t);
+            if (w < 4) continue;
+            ctx.strokeStyle = 'rgba(26,82,22,0.42)';
+            ctx.lineWidth   = long ? 1.3 : 1.6;
+            ctx.beginPath(); ctx.moveTo(cx, yy); ctx.lineTo(cx + w * 0.96, yy - w * 0.5); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(cx, yy); ctx.lineTo(cx - w * 0.96, yy - w * 0.5); ctx.stroke();
+            // feiner heller Glanz neben mancher Ader
+            if (((yy / step) | 0) % 2 === 0) {
+                ctx.strokeStyle = 'rgba(150,200,90,0.25)';
+                ctx.lineWidth   = 0.8;
+                ctx.beginPath(); ctx.moveTo(cx, yy + 1); ctx.lineTo(cx + w * 0.9, yy + 1 - w * 0.5); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(cx, yy + 1); ctx.lineTo(cx - w * 0.9, yy + 1 - w * 0.5); ctx.stroke();
+            }
+        }
+
+        // Kräftige, helle Mittelrippe (gelbgrün)
+        ctx.strokeStyle = long ? 'rgba(190,216,92,0.96)' : 'rgba(178,208,98,0.92)';
+        ctx.lineWidth   = long ? 5 : 6;
+        ctx.beginPath(); ctx.moveTo(cx, baseY - 2); ctx.lineTo(cx, tipY + span * 0.02); ctx.stroke();
+
+        dt.update();
+
+        const m = new BABYLON.StandardMaterial('leafmat_' + kind, scene);
+        m.diffuseTexture  = dt;
+        m.diffuseTexture.hasAlpha = true;
+        m.useAlphaFromDiffuseTexture = true;
+        m.transparencyMode = BABYLON.Material.MATERIAL_ALPHATEST;
+        m.alphaCutOff   = 0.45;
+        m.backFaceCulling = false;
+        m.specularColor = new BABYLON.Color3(0.12, 0.14, 0.12);
+        // Busch-Blätter zeigen in alle Richtungen → mehr Eigenleuchten, damit
+        // abgewandte Blätter im Dunst nicht zu dunkel wirken
+        m.emissiveColor = long ? new BABYLON.Color3(0.05, 0.10, 0.04)
+                               : new BABYLON.Color3(0.09, 0.17, 0.08);
+
+        if (kind === 'banana') _leafMatBanana = m; else _leafMatBush = m;
+        return m;
+    }
 
     function createHorse(scene, bodyColor) {
         const root      = new BABYLON.TransformNode('horse', scene);
@@ -1319,6 +1414,348 @@ const Renderer = (() => {
         }
     }
 
+    // ── Dschungel-Umgebung (gewundener Urwald-Pfad) ──────────────────────────
+    function buildJungleEnvironment() {
+        if (!_arcticLUT) _arcticLUT = _buildSplineLUT(JUNGLE_PTS, 512);
+        const lut = _arcticLUT;
+        const SAMPLES = 256;
+        const TPL_X = 6, TPL_Z = -4;        // Tempel-Zentrum im Innenfeld
+        const POND_X = -32, POND_Z = 10;    // Teich-Zentrum
+
+        // ── Boden: dunkles Dschungelgrün ──────────────────────────────────────
+        const ground = _envMesh(BABYLON.MeshBuilder.CreateGround('ground',
+            { width: 440, height: 300 }, scene));
+        ground.material = cachedMat(0.15, 0.33, 0.13);
+
+        // ── Strecken-Ribbon (Lehm / Erde) ─────────────────────────────────────
+        const inner = [], outer = [];
+        for (let i = 0; i <= SAMPLES; i++) {
+            const prog = (i / SAMPLES) * TRACK_LENGTH;
+            const pi = _splinePos(lut, prog, -(TW/2));
+            const po = _splinePos(lut, prog,  (TW/2));
+            inner.push(new BABYLON.Vector3(pi.x, 0.06, pi.z));
+            outer.push(new BABYLON.Vector3(po.x, 0.06, po.z));
+        }
+        const ribbon = _envMesh(BABYLON.MeshBuilder.CreateRibbon('track',
+            { pathArray: [inner, outer], closePath: true }, scene));
+        ribbon.material = cachedMat(0.55, 0.40, 0.24);
+        ribbon.material.backFaceCulling = false;
+
+        // Begrenzungslinien (helles Sandbraun)
+        for (const path of [inner, outer]) {
+            const b = _envMesh(BABYLON.MeshBuilder.CreateTube('border',
+                { path, radius: 0.2, tessellation: 6 }, scene));
+            b.material = cachedMat(0.80, 0.72, 0.50);
+        }
+        // Spurtrennlinien (moosgrün)
+        for (const offset of [-1.75, 1.75]) {
+            const path = [];
+            for (let i = 0; i <= SAMPLES; i++) {
+                const p = _splinePos(lut, (i / SAMPLES) * TRACK_LENGTH, offset);
+                path.push(new BABYLON.Vector3(p.x, 0.08, p.z));
+            }
+            const t = _envMesh(BABYLON.MeshBuilder.CreateTube('lane',
+                { path, radius: 0.10, tessellation: 4 }, scene));
+            t.material = cachedMat(0.45, 0.62, 0.28);
+        }
+
+        // ── Innenfeld: Teich ──────────────────────────────────────────────────
+        const pondM = new BABYLON.StandardMaterial('jpond', scene);
+        pondM.diffuseColor  = new BABYLON.Color3(0.10, 0.30, 0.30);
+        pondM.specularColor = new BABYLON.Color3(0.4, 0.7, 0.6);
+        pondM.specularPower = 80;
+        const pond = _envMesh(BABYLON.MeshBuilder.CreateCylinder('jpondm',
+            { diameter: 30, height: 0.10, tessellation: 36 }, scene));
+        pond.scaling.z = 0.62;
+        pond.position  = new BABYLON.Vector3(POND_X, 0.07, POND_Z);
+        pond.material  = _envMesh(pondM);
+
+        // ── Innenfeld: Maya-Stufentempel ──────────────────────────────────────
+        const stoneM  = cachedMat(0.52, 0.52, 0.46);
+        const mossM   = cachedMat(0.40, 0.48, 0.34);
+        const STEP_H = 1.6;
+        let tplY = 0;                       // Oberkante des bisherigen Stapels
+        for (let s = 0; s < 5; s++) {
+            const w = 18 - s * 3;
+            const step = _envMesh(BABYLON.MeshBuilder.CreateBox('tpl' + s,
+                { width: w, height: STEP_H, depth: w }, scene));
+            step.position = new BABYLON.Vector3(TPL_X, tplY + STEP_H / 2, TPL_Z);
+            step.material = s % 2 === 0 ? stoneM : mossM;
+            tplY += STEP_H;                 // nächste Stufe sitzt bündig darauf
+        }
+        // Tempelaufsatz – sitzt bündig auf der obersten Stufe (kein Schweben mehr)
+        const TOP_H = 2.4;
+        const tplTop = _envMesh(BABYLON.MeshBuilder.CreateBox('tpltop',
+            { width: 4, height: TOP_H, depth: 4 }, scene));
+        tplTop.position = new BABYLON.Vector3(TPL_X, tplY + TOP_H / 2, TPL_Z);
+        tplTop.material = stoneM;
+        // Türöffnung im Aufsatz (dunkler Block)
+        const tplDoor = _envMesh(BABYLON.MeshBuilder.CreateBox('tpldoor',
+            { width: 1.4, height: 1.6, depth: 0.3 }, scene));
+        tplDoor.position = new BABYLON.Vector3(TPL_X, tplY + 0.8, TPL_Z + 2.0);
+        tplDoor.material = cachedMat(0.12, 0.14, 0.10);
+        // Tempel-Treppe vorne – Stufen bündig an den Pyramidenstufen
+        for (let s = 0; s < 5; s++) {
+            const stp = _envMesh(BABYLON.MeshBuilder.CreateBox('tplstair' + s,
+                { width: 4, height: STEP_H, depth: 1.2 }, scene));
+            const w = 18 - s * 3;
+            stp.position = new BABYLON.Vector3(TPL_X, s * STEP_H + STEP_H / 2, TPL_Z + w / 2 + 0.6);
+            stp.material = mossM;
+        }
+
+        // ── Palmen & Büsche ───────────────────────────────────────────────────
+        const trunkM = cachedMat(0.45, 0.33, 0.18);
+        const cocoM  = cachedMat(0.30, 0.20, 0.10);
+        const leafMs = [cachedMat(0.13, 0.50, 0.16), cachedMat(0.17, 0.58, 0.20),
+                        cachedMat(0.22, 0.46, 0.15)];
+        let _palmSeq = 0;
+        function buildPalm(x, z, h) {
+            const tag  = '_' + (_palmSeq++);
+            const tilt = (Math.random() - 0.5) * 0.16;
+            const seg  = 4;
+            const segH = h / seg;
+            // Stamm – Segmente zu einem Mesh mergen (1 Draw Call)
+            const trunkParts = [];
+            for (let i = 0; i < seg; i++) {
+                const sm = BABYLON.MeshBuilder.CreateCylinder('plt' + tag + '_' + i,
+                    { diameterTop: 0.30, diameterBottom: 0.48, height: segH, tessellation: 7 }, scene);
+                sm.position   = new BABYLON.Vector3(x + tilt * i * 1.3, (i + 0.5) * segH, z);
+                sm.rotation.z = -tilt;
+                trunkParts.push(sm);
+            }
+            const trunk = BABYLON.Mesh.MergeMeshes(trunkParts, true, true, undefined, false, false);
+            trunk.material = trunkM; _envMesh(trunk);
+
+            const topX = x + tilt * seg * 1.3, topY = h;
+            const lm = leafMs[Math.floor(Math.random() * leafMs.length)];
+
+            // Krone – gewölbte, herabhängende Wedel (je 2 Segmente: innen flach, außen hängend)
+            const fronds = [];
+            const NF   = 9;
+            const base = Math.random() * Math.PI;
+            for (let f = 0; f < NF; f++) {
+                const a  = base + (f / NF) * Math.PI * 2;
+                const dx = Math.cos(a), dz = Math.sin(a);
+                const inner = BABYLON.MeshBuilder.CreateBox('plfi' + tag + '_' + f,
+                    { width: 0.55, height: 0.10, depth: 2.0 }, scene);
+                inner.rotation.y = -a; inner.rotation.x = -0.12;
+                inner.position   = new BABYLON.Vector3(topX + dx * 0.95, topY + 0.10, z + dz * 0.95);
+                const outer = BABYLON.MeshBuilder.CreateBox('plfo' + tag + '_' + f,
+                    { width: 0.34, height: 0.09, depth: 2.2 }, scene);
+                outer.rotation.y = -a; outer.rotation.x = 0.55;
+                outer.position   = new BABYLON.Vector3(topX + dx * 2.55, topY - 0.55, z + dz * 2.55);
+                fronds.push(inner, outer);
+            }
+            const crown = BABYLON.Mesh.MergeMeshes(fronds, true, true, undefined, false, false);
+            crown.material = lm; _envMesh(crown);
+
+            // Kokosnüsse-Cluster direkt unter der Krone
+            const cocos = [];
+            for (let c = 0; c < 3; c++) {
+                const ca = c / 3 * Math.PI * 2;
+                const co = BABYLON.MeshBuilder.CreateSphere('plc' + tag + '_' + c,
+                    { diameter: 0.5, segments: 6 }, scene);
+                co.position = new BABYLON.Vector3(topX + Math.cos(ca) * 0.35, topY - 0.45, z + Math.sin(ca) * 0.35);
+                cocos.push(co);
+            }
+            const cocoMesh = BABYLON.Mesh.MergeMeshes(cocos, true, true, undefined, false, false);
+            cocoMesh.material = cocoM; _envMesh(cocoMesh);
+        }
+
+        const bushLeafMat = _jungleLeafMaterial('bush');
+        let _bushSeq = 0;
+        function buildBush(x, z) {
+            const tag   = '_' + (_bushSeq++);
+            const n     = 9 + Math.floor(Math.random() * 4);   // 9-12 Blätter
+            const a0    = Math.random() * Math.PI * 2;
+            const scale = 0.85 + Math.random() * 0.45;         // Busch-Gesamtgröße
+            const parts = [], pivots = [];
+
+            for (let i = 0; i < n; i++) {
+                const a   = a0 + (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.30;
+                const up  = 0.5 + Math.random() * 0.45;        // Aufrichtung (rad über dem Boden)
+                const len = (2.0 + Math.random() * 0.8) * scale;
+                const wid = (1.05 + Math.random() * 0.35) * scale;
+
+                // Dreh-Pivot im Buschzentrum → Blatt strahlt radial nach außen-oben
+                const piv = new BABYLON.TransformNode('bpiv' + tag + '_' + i, scene);
+                piv.position   = new BABYLON.Vector3(x, 0.10, z);
+                piv.rotation.y = a;
+
+                const lf = BABYLON.MeshBuilder.CreatePlane('bl' + tag + '_' + i,
+                    { width: wid, height: len, sideOrientation: BABYLON.Mesh.DOUBLESIDE }, scene);
+                lf.parent     = piv;
+                lf.rotation.x = Math.PI / 2 - up;              // von flach nach oben aufgerichtet
+                lf.position   = new BABYLON.Vector3(0, Math.sin(up) * len * 0.42, Math.cos(up) * len * 0.45);
+                lf.computeWorldMatrix(true);
+                parts.push(lf); pivots.push(piv);
+            }
+
+            const bush = BABYLON.Mesh.MergeMeshes(parts, true, true, undefined, false, false);
+            if (bush) { bush.material = bushLeafMat; _envMesh(bush); }
+            pivots.forEach(p => p.dispose());
+        }
+
+        const _treePos = [];
+        const MIN_GAP  = 7.5;
+        for (let i = 0; i < 44; i++) {
+            const prog   = (i / 44) * TRACK_LENGTH + 4;
+            const inside = i % 2 === 0;
+            const offset = inside ? -(TW / 2 + 8 + Math.random() * 10)
+                                  :  (TW / 2 + 8 + Math.random() * 16);
+            const tp = _splinePos(lut, prog, offset);
+            // Tempel- und Teich-Ausschlusszonen
+            if ((tp.x - TPL_X) ** 2 + (tp.z - TPL_Z) ** 2 < 16 * 16) continue;
+            if (((tp.x - POND_X) / 17) ** 2 + ((tp.z - POND_Z) / 11) ** 2 < 1.1) continue;
+            const tooClose = _treePos.some(p => {
+                const dx = p[0] - tp.x, dz = p[1] - tp.z; return dx * dx + dz * dz < MIN_GAP * MIN_GAP;
+            });
+            if (tooClose) continue;
+            _treePos.push([tp.x, tp.z]);
+            if (i % 3 === 0) buildBush(tp.x, tp.z);
+            else             buildPalm(tp.x, tp.z, 7 + Math.random() * 5);
+        }
+
+        // ── Zieltor (Holzpfosten mit Lianen) + Banner ─────────────────────────
+        const gateH  = 9;
+        const _gp1   = _splinePos(lut, 0, -(TW / 2 + 1.5));
+        const _gp2   = _splinePos(lut, 0,  (TW / 2 + 1.5));
+        const woodM  = cachedMat(0.42, 0.28, 0.14);
+        const vineM  = cachedMat(0.20, 0.50, 0.18);
+        for (const [gx, gz] of [[_gp1.x, _gp1.z], [_gp2.x, _gp2.z]]) {
+            const pole = _envMesh(BABYLON.MeshBuilder.CreateCylinder('jgp_' + gx,
+                { height: gateH, diameter: 0.55, tessellation: 8 }, scene));
+            pole.position = new BABYLON.Vector3(gx, gateH / 2, gz);
+            pole.material = woodM;
+            // Lianen-Ringe
+            for (let r = 0; r < 3; r++) {
+                const ring = _envMesh(BABYLON.MeshBuilder.CreateTorus('jgv_' + gx + '_' + r,
+                    { diameter: 0.7, thickness: 0.12, tessellation: 8 }, scene));
+                ring.position = new BABYLON.Vector3(gx, 1.5 + r * 2.6, gz);
+                ring.material = vineM;
+            }
+        }
+        const gateMidX = (_gp1.x + _gp2.x) / 2, gateMidZ = (_gp1.z + _gp2.z) / 2;
+        const beamLen  = Math.sqrt((_gp2.x - _gp1.x) ** 2 + (_gp2.z - _gp1.z) ** 2) + 0.5;
+        const beam = _envMesh(BABYLON.MeshBuilder.CreateBox('jgbeam',
+            { width: 0.5, height: 0.5, depth: beamLen }, scene));
+        beam.position = new BABYLON.Vector3(gateMidX, gateH, gateMidZ);
+        const beamDir = new BABYLON.Vector3(_gp2.x - _gp1.x, 0, _gp2.z - _gp1.z);
+        beam.lookAt(beam.position.add(beamDir));
+        beam.material = woodM;
+
+        // FINISH-Banner (Dschungel-grün)
+        const bannerPlane = _envMesh(BABYLON.MeshBuilder.CreatePlane('banner',
+            { width: 9.0, height: 1.5 }, scene));
+        bannerPlane.position = new BABYLON.Vector3(gateMidX, gateH + 1.6, gateMidZ);
+        const perpDir = new BABYLON.Vector3(-beamDir.z, 0, beamDir.x);
+        bannerPlane.lookAt(bannerPlane.position.add(perpDir));
+        const banTex = new BABYLON.DynamicTexture('bantex', { width: 512, height: 80 }, scene, false);
+        const bCtx   = banTex.getContext();
+        bCtx.fillStyle = 'rgba(18, 45, 20, 0.92)';
+        bCtx.fillRect(0, 0, 512, 80);
+        const checkSize = 20;
+        for (let ci = 0; ci < 4; ci++) {
+            bCtx.fillStyle = ci % 2 === 0 ? '#9bd66a' : '#2f7d2f';
+            bCtx.fillRect(ci * checkSize, 0, checkSize, 80);
+            bCtx.fillStyle = ci % 2 === 0 ? '#2f7d2f' : '#9bd66a';
+            bCtx.fillRect(512 - (ci + 1) * checkSize, 0, checkSize, 80);
+        }
+        bCtx.font = 'bold 48px Arial, sans-serif';
+        bCtx.textAlign = 'center'; bCtx.textBaseline = 'middle';
+        bCtx.shadowColor = 'rgba(0,0,0,0.9)'; bCtx.shadowBlur = 8;
+        bCtx.fillStyle = '#d6ffae';
+        bCtx.fillText('FINISH', 256, 42);
+        banTex.update();
+        const banMat = new BABYLON.StandardMaterial('banm', scene);
+        banMat.diffuseTexture  = banTex;
+        banMat.emissiveTexture = banTex;
+        banMat.emissiveColor   = new BABYLON.Color3(1, 1, 1);
+        banMat.useAlphaFromDiffuseTexture = true;
+        banMat.disableLighting = true;
+        banMat.backFaceCulling = false;
+        bannerPlane.material = _envMesh(banMat);
+        _finishBanner = bannerPlane;
+
+        // ── Jubelnde Stammes-Zuschauer (gemergt, Vertex-Farben) ───────────────
+        function _applyVC(mesh, r, g, b) {
+            const pos = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+            if (!pos) return;
+            const cols = new Float32Array(pos.length / 3 * 4);
+            for (let i = 0; i < pos.length / 3; i++) { cols[i*4]=r; cols[i*4+1]=g; cols[i*4+2]=b; cols[i*4+3]=1; }
+            mesh.setVerticesData(BABYLON.VertexBuffer.ColorKind, cols);
+        }
+        const vcMat = (() => {
+            const m = new BABYLON.StandardMaterial('jvcm', scene);
+            m.diffuseColor = new BABYLON.Color3(1, 1, 1);
+            return _envMesh(m);
+        })();
+        const SKIN = [[0.55,0.38,0.24],[0.66,0.46,0.30],[0.48,0.32,0.20]];
+        const WRAP = [[0.85,0.25,0.15],[0.90,0.70,0.12],[0.20,0.55,0.75],[0.75,0.75,0.78]];
+        const FEATH= [[0.90,0.20,0.18],[0.95,0.75,0.10],[0.15,0.60,0.30],[0.20,0.45,0.85]];
+        let _jIdx = 0;
+
+        function placeJungleGroup(centerProg, spread, rows, perRow) {
+            const bodies = [], heads = [], hats = [];
+            let cx = 0, cz = 0, cnt = 0;
+            for (const side of [-1, 1]) {
+                for (let row = 0; row < rows; row++) {
+                    const rowDist = TW / 2 + 7 + row * 2.2;
+                    for (let col = 0; col < perRow; col++) {
+                        const offset = (col / (perRow - 1) - 0.5) * spread;
+                        const prog   = (centerProg + offset * 8 + TRACK_LENGTH) % TRACK_LENGTH;
+                        const p      = _splinePos(lut, prog, rowDist * side);
+                        // Tempel/Teich aussparen
+                        if ((p.x - TPL_X) ** 2 + (p.z - TPL_Z) ** 2 < 15 * 15) continue;
+                        const bodyH = 0.80, headR = 0.18, si = _jIdx++;
+                        const lp = _splinePos(lut, prog, 0);
+                        const angle = Math.atan2(lp.x - p.x, lp.z - p.z);
+                        const sc = SKIN[si % SKIN.length], wc = WRAP[si % WRAP.length], fc = FEATH[si % FEATH.length];
+
+                        const body = BABYLON.MeshBuilder.CreateBox('jgb_' + si,
+                            { width: 0.50, height: bodyH, depth: 0.38 }, scene);
+                        body.position = new BABYLON.Vector3(p.x, bodyH/2 + 0.01, p.z);
+                        body.rotation.y = angle;
+                        _applyVC(body, wc[0], wc[1], wc[2]);
+
+                        const head = BABYLON.MeshBuilder.CreateSphere('jgh_' + si,
+                            { diameter: headR*2, segments: 4 }, scene);
+                        head.position = new BABYLON.Vector3(p.x, bodyH + headR + 0.04, p.z);
+                        head.rotation.y = angle;
+                        _applyVC(head, sc[0], sc[1], sc[2]);
+
+                        // Federschmuck als "Hut"
+                        const hat = BABYLON.MeshBuilder.CreateCylinder('jghat_' + si,
+                            { diameterTop: 0.04, diameterBottom: 0.30, height: 0.34, tessellation: 6 }, scene);
+                        hat.position = new BABYLON.Vector3(p.x, bodyH + headR*2 + 0.16, p.z);
+                        hat.rotation.y = angle;
+                        _applyVC(hat, fc[0], fc[1], fc[2]);
+
+                        bodies.push(body); heads.push(head); hats.push(hat);
+                        cx += p.x; cz += p.z; cnt++;
+                    }
+                }
+            }
+            if (bodies.length === 0) return;
+            cx /= cnt; cz /= cnt;
+            const mb = BABYLON.Mesh.MergeMeshes(bodies, true, true, undefined, false, false);
+            const mh = BABYLON.Mesh.MergeMeshes(heads,  true, true, undefined, false, false);
+            const mt = BABYLON.Mesh.MergeMeshes(hats,   true, true, undefined, false, false);
+            if (!mb) return;
+            mb.material = vcMat; mh.material = vcMat; mt.material = vcMat;
+            _envMesh(mb); _envMesh(mh); _envMesh(mt);
+            _spectators.push({
+                body: mb, head: mh, hat: mt,
+                baseY: 0, headBaseY: 0, hatBaseY: 0,
+                worldX: cx, worldZ: cz,
+                type: 'jungle', _lastDist: 9999, _cheerTimer: -1,
+            });
+        }
+
+        placeJungleGroup(40,  14, 3, 10);   // Zielbereich
+        placeJungleGroup(550, 14, 3, 10);   // Halbzeit
+    }
+
     // ── Map wechseln: ALLE Szenen-Meshes außer Pferden + Himmel entfernen ────
     function setMap(mapId) {
         if (!scene || mapId === _currentMapId) return;
@@ -1350,9 +1787,12 @@ const Renderer = (() => {
         _treeGreenMats.length = 0;
         _clearMatCache();
 
-        // Spline-LUT setzen / zurücksetzen
+        // Spline-LUT setzen / zurücksetzen (_arcticLUT = "aktuelle Spline-LUT")
         if (mapId === 'arctic') {
             _arcticLUT = _buildSplineLUT(ARCTIC_PTS, 512);
+            TRACK_A = 0; TRACK_B = 0;
+        } else if (mapId === 'jungle') {
+            _arcticLUT = _buildSplineLUT(JUNGLE_PTS, 512);
             TRACK_A = 0; TRACK_B = 0;
         } else {
             _arcticLUT = null;
@@ -1363,6 +1803,9 @@ const Renderer = (() => {
         if (mapId === 'arctic') {
             buildArcticEnvironment();
             setWeather('arctic');
+        } else if (mapId === 'jungle') {
+            buildJungleEnvironment();
+            setWeather('jungle');
         } else {
             _buildMeadowEnvironment();
             setWeather('sunny');
@@ -1958,7 +2401,7 @@ const Renderer = (() => {
                 if (_arcticLUT && _playerId && horses[_playerId]) {
                     const hpos = horses[_playerId].root.position;
                     for (const sp of _spectators) {
-                        if (sp.type !== 'arctic') continue;
+                        if (sp.type !== 'arctic' && sp.type !== 'jungle') continue;
                         const dx = hpos.x - sp.worldX, dz = hpos.z - sp.worldZ;
                         const dist2 = dx * dx + dz * dz;  // Quadrat, kein sqrt nötig
 
@@ -2257,7 +2700,100 @@ const Renderer = (() => {
         if (!list || list.length === 0) return;
         for (const obs of list) {
 
-            const isArcticMap = !!_arcticLUT;
+            const isArcticMap = _currentMapId === 'arctic';
+            const isJungleMap = _currentMapId === 'jungle';
+
+            // ── Blasrohr-Kobold (grüner Goblin am Streckenrand) ───────────────
+            if (obs.type === 'blowgun') {
+                if (obstacleMeshes[obs.id]) continue;
+                const side    = obs.side || -1;
+                const edgeOff = side * (TW / 2 + 1.6);
+                const pos     = trackPosition(obs.progress, edgeOff);
+                const center  = trackPosition(obs.progress, 0);   // Streckenmitte = Blickrichtung
+                const root    = new BABYLON.TransformNode('obs' + obs.id, scene);
+                root.position = new BABYLON.Vector3(pos.x, 0, pos.z);
+
+                // Kobold-Palette (deutlich anders als die Zuschauer: grüne Haut)
+                const skinM  = cachedMat(0.33, 0.55, 0.25);   // Kobold-Grün
+                const skinD  = cachedMat(0.22, 0.40, 0.17);   // dunkles Grün
+                const clothM = cachedMat(0.46, 0.26, 0.11);   // brauner Lendenschurz
+                const tubeM  = cachedMat(0.24, 0.16, 0.08);   // dunkles Blasrohr
+                const eyeM   = cachedMat(0.98, 0.85, 0.14);   // gelbe, leuchtende Augen
+                const boneM  = cachedMat(0.92, 0.90, 0.80);   // Knochen im Haar
+
+                // Beine (kurz, gespreizt, mittig unter dem Körper)
+                [-0.17, 0.17].forEach((lx, i) => {
+                    const leg = BABYLON.MeshBuilder.CreateCylinder('bgl' + i + '_' + obs.id,
+                        { diameterTop: 0.15, diameterBottom: 0.21, height: 0.5, tessellation: 5 }, scene);
+                    leg.position = new BABYLON.Vector3(lx, 0.25, 0.06);
+                    leg.rotation.x = 0.05; leg.material = skinM; leg.parent = root;
+                });
+                // Gedrungener Rumpf (nach vorn zur Strecke gebeugt)
+                const body = BABYLON.MeshBuilder.CreateSphere('bgbd_' + obs.id,
+                    { diameter: 0.66, segments: 8 }, scene);
+                body.scaling  = new BABYLON.Vector3(1.05, 1.05, 0.9);
+                body.position = new BABYLON.Vector3(0, 0.74, 0.06);
+                body.material = skinM; body.parent = root;
+                // Lendenschurz
+                const cloth = BABYLON.MeshBuilder.CreateCylinder('bgcl_' + obs.id,
+                    { diameterTop: 0.5, diameterBottom: 0.62, height: 0.3, tessellation: 8 }, scene);
+                cloth.position = new BABYLON.Vector3(0, 0.54, 0.03); cloth.material = clothM; cloth.parent = root;
+                // Großer Kopf
+                const head = BABYLON.MeshBuilder.CreateSphere('bgh_' + obs.id,
+                    { diameter: 0.52, segments: 8 }, scene);
+                head.position = new BABYLON.Vector3(0, 1.18, 0.08); head.material = skinM; head.parent = root;
+                // Große Spitzohren (seitlich abstehend → goblinhaft)
+                [-1, 1].forEach((s) => {
+                    const ear = BABYLON.MeshBuilder.CreateCylinder('bge' + s + '_' + obs.id,
+                        { diameterTop: 0, diameterBottom: 0.18, height: 0.44, tessellation: 5 }, scene);
+                    ear.position = new BABYLON.Vector3(s * 0.27, 1.24, 0.0);
+                    ear.rotation.z = s * 1.25; ear.rotation.x = -0.3; ear.material = skinM; ear.parent = root;
+                });
+                // Gelbe, leuchtende Augen (vorn, zur Strecke gerichtet)
+                [-1, 1].forEach((s) => {
+                    const eye = BABYLON.MeshBuilder.CreateSphere('bgey' + s + '_' + obs.id,
+                        { diameter: 0.13, segments: 6 }, scene);
+                    eye.position = new BABYLON.Vector3(s * 0.12, 1.22, 0.31); eye.material = eyeM; eye.parent = root;
+                });
+                // Haarknoten + Knochen (statt Feder → unterscheidet sich von Zuschauern)
+                const knot = BABYLON.MeshBuilder.CreateSphere('bgk_' + obs.id,
+                    { diameter: 0.20, segments: 6 }, scene);
+                knot.position = new BABYLON.Vector3(0, 1.44, -0.02); knot.material = skinD; knot.parent = root;
+                const bone = BABYLON.MeshBuilder.CreateCylinder('bgbn_' + obs.id,
+                    { diameter: 0.07, height: 0.46, tessellation: 5 }, scene);
+                bone.position = new BABYLON.Vector3(0, 1.5, -0.02); bone.rotation.z = Math.PI / 2;
+                bone.material = boneM; bone.parent = root;
+
+                // Blasrohr – horizontal nach vorn zur Strecke (Pfeil tritt waagerecht aus)
+                const TUBE_TILT = Math.PI / 2;
+                const tube = BABYLON.MeshBuilder.CreateCylinder('bgt_' + obs.id,
+                    { diameter: 0.09, height: 1.1, tessellation: 6 }, scene);
+                tube.rotation.x = TUBE_TILT;                 // Achse → +Z, waagerecht zur Fahrbahn
+                tube.position   = new BABYLON.Vector3(0.05, 1.12, 0.95);
+                tube.material   = tubeM; tube.parent = root;
+                // Rohrachse + hinteres Ende (am Mund) berechnen
+                const tubeAxis = new BABYLON.Vector3(0, Math.cos(TUBE_TILT), Math.sin(TUBE_TILT));
+                const tubeNear = tube.position.add(tubeAxis.scale(-0.55));
+
+                // Arme von den Schultern zu zwei Händen, die das Rohr fest greifen
+                [-1, 1].forEach((s) => {
+                    const shoulder = new BABYLON.Vector3(s * 0.30, 0.95, 0.12);
+                    const hand     = tubeNear.add(tubeAxis.scale(s < 0 ? 0.18 : 0.46));
+                    // Arm als Röhre direkt von Schulter zu Hand (immer verbunden)
+                    const arm = BABYLON.MeshBuilder.CreateTube('bga' + s + '_' + obs.id,
+                        { path: [shoulder, hand], radius: 0.06, tessellation: 6, cap: BABYLON.Mesh.CAP_ALL }, scene);
+                    arm.material = skinM; arm.parent = root;
+                    // Hand umschließt das Rohr
+                    const hnd = BABYLON.MeshBuilder.CreateSphere('bghn' + s + '_' + obs.id,
+                        { diameter: 0.18, segments: 6 }, scene);
+                    hnd.position = hand; hnd.material = skinM; hnd.parent = root;
+                });
+
+                // Vorderseite zur Strecke ausrichten → Blasrohr zielt auf die Spuren
+                root.lookAt(new BABYLON.Vector3(center.x, 0, center.z));
+                obstacleMeshes[obs.id] = root;
+                continue;
+            }
 
             // ── Bewegliches Hindernis (Heuwagen / Eisscholle) ─────────────────
             if (obs.type === 'haycart') {
@@ -2300,6 +2836,36 @@ const Renderer = (() => {
                             blk.position = new BABYLON.Vector3(bx, by, bz);
                             blk.material = iceMat2; blk.parent = root;
                         });
+                    } else if (isJungleMap) {
+                        // 🌿 Riesen-Bananenblatt (texturierte Fläche mit feinen Adern)
+                        const leafMat = _jungleLeafMaterial('banana');
+                        const stemM   = cachedMat(0.34, 0.46, 0.18);
+
+                        // Blattgruppe – leicht geneigt, Spitze vorne (+z)
+                        const leaf = new BABYLON.TransformNode('leafgrp'+obs.id, scene);
+                        leaf.parent   = root;
+                        leaf.position = new BABYLON.Vector3(0, 1.55, 0.5);
+                        leaf.rotation.x = -0.30;
+
+                        // Texturierte Blattfläche (Spitze nach +z, Basis nach -z)
+                        const blade = BABYLON.MeshBuilder.CreatePlane('lblade'+obs.id,
+                            { width: 3.0, height: 6.6, sideOrientation: BABYLON.Mesh.DOUBLESIDE }, scene);
+                        blade.rotation.x = Math.PI / 2;
+                        blade.position   = new BABYLON.Vector3(0, 0, 1.3);
+                        blade.material   = leafMat; blade.parent = leaf;
+
+                        // Blattstiel (Petiole): gebogen & schräg, schließt an die
+                        // Blattbasis ~(0, 0.96, -1.41) an und läuft diagonal zur Strecke.
+                        // Unteres Segment (flacher) – wurzelt hinter dem Blatt
+                        const stem1 = BABYLON.MeshBuilder.CreateCylinder('lstem'+obs.id,
+                            { diameterTop: 0.18, diameterBottom: 0.30, height: 0.95, tessellation: 6 }, scene);
+                        stem1.position   = new BABYLON.Vector3(0, 0.19, -2.39);
+                        stem1.rotation.x = 0.82; stem1.material = stemM; stem1.parent = root;
+                        // Oberes Segment (steiler geneigt) – tuckt in die Blattbasis
+                        const stem2 = BABYLON.MeshBuilder.CreateCylinder('lstem2'+obs.id,
+                            { diameterTop: 0.11, diameterBottom: 0.19, height: 1.05, tessellation: 6 }, scene);
+                        stem2.position   = new BABYLON.Vector3(0, 0.72, -1.745);
+                        stem2.rotation.x = 0.95; stem2.material = stemM; stem2.parent = root;
                     } else {
                         // 🌾 Heuwagen
                         const body = BABYLON.MeshBuilder.CreateBox('cbody'+obs.id, { width: 3.4, height: 0.55, depth: 2.0 }, scene);
@@ -2396,6 +2962,37 @@ const Renderer = (() => {
                     const hatBody = BABYLON.MeshBuilder.CreateCylinder('smhc_'+obs.id,
                         { diameter: 0.66, height: 0.70, tessellation: 14 }, scene);
                     hatBody.position.y = 3.63; hatBody.material = hatM; hatBody.parent = root;
+                } else if (isJungleMap) {
+                    // 🗿 Tiki-Steinstatue
+                    const stoneM = cachedMat(0.46, 0.44, 0.38);
+                    const stoneD = cachedMat(0.34, 0.33, 0.28);
+                    const eyeM   = cachedMat(0.05, 0.05, 0.05);
+                    const mouthM = cachedMat(0.70, 0.20, 0.10);
+                    // Sockel
+                    const base = BABYLON.MeshBuilder.CreateBox('tkb_'+obs.id,
+                        { width: 1.5, height: 0.5, depth: 1.5 }, scene);
+                    base.position.y = 0.25; base.material = stoneD; base.parent = root;
+                    // Korpus (zwei gestapelte Blöcke)
+                    const torso = BABYLON.MeshBuilder.CreateBox('tkt_'+obs.id,
+                        { width: 1.3, height: 1.5, depth: 1.2 }, scene);
+                    torso.position.y = 1.25; torso.material = stoneM; torso.parent = root;
+                    const head = BABYLON.MeshBuilder.CreateBox('tkh_'+obs.id,
+                        { width: 1.45, height: 1.3, depth: 1.3 }, scene);
+                    head.position.y = 2.55; head.material = stoneD; head.parent = root;
+                    // Augenbrauen-Vorsprung
+                    const brow = BABYLON.MeshBuilder.CreateBox('tkbr_'+obs.id,
+                        { width: 1.5, height: 0.3, depth: 0.3 }, scene);
+                    brow.position = new BABYLON.Vector3(0, 2.85, -0.6); brow.material = stoneM; brow.parent = root;
+                    // Augen
+                    [-0.32, 0.32].forEach((x, i) => {
+                        const eye = BABYLON.MeshBuilder.CreateBox('tke'+i+'_'+obs.id,
+                            { width: 0.3, height: 0.3, depth: 0.18 }, scene);
+                        eye.position = new BABYLON.Vector3(x, 2.55, -0.68); eye.material = eyeM; eye.parent = root;
+                    });
+                    // Mund
+                    const mouth = BABYLON.MeshBuilder.CreateBox('tkm_'+obs.id,
+                        { width: 0.8, height: 0.28, depth: 0.16 }, scene);
+                    mouth.position = new BABYLON.Vector3(0, 2.05, -0.66); mouth.material = mouthM; mouth.parent = root;
                 } else {
                     // 🌾 Strohballen
                     const bale = BABYLON.MeshBuilder.CreateCylinder('bale'+obs.id,
@@ -2441,6 +3038,40 @@ const Renderer = (() => {
                             blk.parent   = root;
                         }
                     }
+                } else if (isJungleMap) {
+                    // 🪵 Umgestürzter, bemooster Baumstamm (Sprung zwingend)
+                    const barkM = cachedMat(0.40, 0.28, 0.16);
+                    const mossM = cachedMat(0.22, 0.46, 0.18);
+                    const ringM = cachedMat(0.62, 0.48, 0.30);
+                    // Hauptstamm – liegt quer über die Strecke
+                    const log = BABYLON.MeshBuilder.CreateCylinder('jlog_'+obs.id,
+                        { diameter: 1.7, height: 11, tessellation: 12 }, scene);
+                    log.rotation.z = Math.PI / 2;
+                    log.position.y = 0.95;
+                    log.material   = barkM; log.parent = root;
+                    // Schnittflächen (Jahresringe) an beiden Enden
+                    [-5.5, 5.5].forEach((x, i) => {
+                        const cut = BABYLON.MeshBuilder.CreateCylinder('jlogc'+i+'_'+obs.id,
+                            { diameter: 1.72, height: 0.12, tessellation: 12 }, scene);
+                        cut.rotation.z = Math.PI / 2;
+                        cut.position = new BABYLON.Vector3(x, 0.95, 0);
+                        cut.material = ringM; cut.parent = root;
+                    });
+                    // Moosflecken obenauf
+                    for (let i = 0; i < 6; i++) {
+                        const moss = BABYLON.MeshBuilder.CreateSphere('jlogm'+i+'_'+obs.id,
+                            { diameter: 0.7 + Math.random()*0.5, segments: 5 }, scene);
+                        moss.position = new BABYLON.Vector3((i - 2.5) * 1.7 + (Math.random()-0.5), 1.55, (Math.random()-0.5)*0.5);
+                        moss.scaling.y = 0.4;
+                        moss.material = mossM; moss.parent = root;
+                    }
+                    // ein paar abstehende Aststummel
+                    [[-3.2, 1.4, 0.4], [2.6, 1.5, -0.5]].forEach(([x, y, z], i) => {
+                        const branch = BABYLON.MeshBuilder.CreateCylinder('jlogb'+i+'_'+obs.id,
+                            { diameter: 0.3, height: 1.4, tessellation: 6 }, scene);
+                        branch.position = new BABYLON.Vector3(x, y, z);
+                        branch.rotation.x = 0.7; branch.material = barkM; branch.parent = root;
+                    });
                 } else {
                     // 🏇 Holzzaun
                     [-4.8, 4.8].forEach((x, i) => {
@@ -2473,6 +3104,70 @@ const Renderer = (() => {
             m.dispose();
         }
         Object.keys(obstacleMeshes).forEach(k => delete obstacleMeshes[k]);
+        clearProjectiles();
+    }
+
+    // ── Blasrohr-Pfeile rendern (Dschungel) ────────────────────────────────────
+    // Kleiner Blasrohr-Pfeil (Schaft + Giftspitze + Befiederung), Spitze nach +Z
+    function _buildDart(id) {
+        const root    = new BABYLON.TransformNode('dart_' + id, scene);
+        const shaftM  = cachedMat(0.24, 0.16, 0.08);   // dunkler Schaft
+        const tipM    = cachedMat(0.88, 0.84, 0.22);   // gelbe Giftspitze
+        const fletchM = cachedMat(0.82, 0.20, 0.16);   // rote Befiederung
+        const shaft = BABYLON.MeshBuilder.CreateCylinder('dsh_' + id,
+            { diameter: 0.05, height: 0.7, tessellation: 6 }, scene);
+        shaft.rotation.x = Math.PI / 2; shaft.material = shaftM; shaft.parent = root;
+        const tip = BABYLON.MeshBuilder.CreateCylinder('dtp_' + id,
+            { diameterTop: 0, diameterBottom: 0.11, height: 0.3, tessellation: 6 }, scene);
+        tip.rotation.x = Math.PI / 2; tip.position.z = 0.5; tip.material = tipM; tip.parent = root;
+        const fletch = BABYLON.MeshBuilder.CreateCylinder('dfl_' + id,
+            { diameterTop: 0.22, diameterBottom: 0.03, height: 0.24, tessellation: 6 }, scene);
+        fletch.rotation.x = -Math.PI / 2; fletch.position.z = -0.4; fletch.material = fletchM; fletch.parent = root;
+        return root;
+    }
+
+    // Progress-Interpolation mit Wrap (kürzester Weg um die Strecke)
+    function _lerpProg(a, b, t) {
+        let d = b - a;
+        if (d >  TRACK_LENGTH / 2) d -= TRACK_LENGTH;
+        if (d < -TRACK_LENGTH / 2) d += TRACK_LENGTH;
+        return ((a + d * t) % TRACK_LENGTH + TRACK_LENGTH) % TRACK_LENGTH;
+    }
+
+    function updateProjectiles(list) {
+        const active = new Set((list || []).map(p => p.id));
+        // Verschwundene Pfeile entfernen
+        for (const id of Object.keys(projectileMeshes)) {
+            if (!active.has(id)) {
+                projectileMeshes[id].dispose();
+                delete projectileMeshes[id];
+            }
+        }
+        if (!list || list.length === 0) return;
+
+        for (const p of list) {
+            const t = Math.max(0, Math.min(1, p.t));
+            // Pfeilbahn: vom Mündungsaustritt am Kobold zum Vorhaltepunkt vor dem Pferd
+            const curProg = _lerpProg(p.srcProgress, p.tgtProgress, t);
+            const curOff  = p.startOff + (p.tgtOff - p.startOff) * t;
+            const pos     = trackPosition(curProg, curOff);
+            const y       = 1.18 - Math.sin(t * Math.PI) * 0.06;   // fast flach, minimaler Bogen
+
+            let dart = projectileMeshes[p.id];
+            if (!dart) { dart = _buildDart(p.id); projectileMeshes[p.id] = dart; }
+            dart.position.set(pos.x, y, pos.z);
+            // Ausrichtung entlang der Flugbahn (leicht voraus)
+            const t2        = Math.min(1, t + 0.05);
+            const aheadProg = _lerpProg(p.srcProgress, p.tgtProgress, t2);
+            const aheadOff  = p.startOff + (p.tgtOff - p.startOff) * t2;
+            const ahead     = trackPosition(aheadProg, aheadOff);
+            dart.lookAt(new BABYLON.Vector3(ahead.x, y, ahead.z));
+        }
+    }
+
+    function clearProjectiles() {
+        for (const m of Object.values(projectileMeshes)) m.dispose();
+        Object.keys(projectileMeshes).forEach(k => delete projectileMeshes[k]);
     }
 
     function updatePowerups(list) {
@@ -2731,6 +3426,7 @@ const Renderer = (() => {
     return { init, setPlayerId, setCameraMode, setWeather, setMap,
              triggerSpectatorWave,
              updateHorse, updateObstacles, clearObstacles,
+             updateProjectiles, clearProjectiles,
              updatePowerups, clearPowerups,
              triggerFinishConfetti, triggerVictoryCamera, resetVictoryCamera,
              triggerBlitzFlash,

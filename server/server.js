@@ -187,7 +187,7 @@ wss.on('connection', (ws) => {
         // ── Map-Vote ──────────────────────────────────────────────────────────
         if (msg.type === 'mapVote' && ws.lobbyId && ws.horseId) {
             const lb = lobbyMgr.get(ws.lobbyId);
-            if (lb && ['meadow', 'arctic'].includes(msg.mapId)) {
+            if (lb && ['meadow', 'arctic', 'jungle'].includes(msg.mapId)) {
                 lb.mapVotes[ws.horseId] = msg.mapId;
                 // Sofortiges Preview: Map auf führenden Vote-Gewinner umstellen
                 const winning = _resolveMap(lb);
